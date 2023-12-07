@@ -23,10 +23,20 @@ class KryoStream():
         self.oob = []
         self.stream_end = None
         self.result_code = None
+        self.sck = None
+        self.ick = None
 
         self.deframe()
-        self.sck = float(self.kfinfo_sck)
-        self.ick = float(self.kfinfo_ick)
+        if hasattr(self, "kfinfo_sck"):
+            self.sck = float(self.kfinfo_sck)
+        if hasattr(self, "kfinfo_ick"):
+            self.ick = float(self.kfinfo_ick)
+
+    def __str__(self):
+        return "<KryoStream " + self.filename + ">"
+
+    def __lt__(self, other):
+        return self.filename < other.filename
 
     def do_index(self):
         for idx in self.index:
@@ -73,6 +83,9 @@ class KryoStream():
                 # NOP3 ignore
                 idx += 3
                 strm += 3
+            elif blkhd == 0x0b:
+                # +64K clocks
+                idx += 1
             elif blkhd == 0x0d:
                 i = struct.unpack("<BBH", octets[idx:idx+4])
                 self.handle_oob(strm, octets[idx: idx + 4 + i[2]])
@@ -87,5 +100,6 @@ class KryoStream():
                     strm += 1
                 idx = i
             else:
-                print ("?", blkhd)
+                print ("?", blkhd, self.filename)
                 idx += 1
+                break
