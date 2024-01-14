@@ -38,6 +38,12 @@ class KryoStream():
     def __lt__(self, other):
         return self.filename < other.filename
 
+    def iter_dt(self):
+        last = 0
+        for i in self.strm.values():
+            yield i - last
+            last = i
+
     def do_index(self):
         for idx in self.index:
             samp = self.strm.get(idx[3])

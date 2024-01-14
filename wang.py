@@ -75,7 +75,7 @@ def main(args):
     for pattern in args[2:]:
         rdg = floppy.Reading(flp, pattern)
         flp.add_reading(rdg)
-        for fn in sorted(glob.glob(pattern + "/*57.0.raw")):
+        for fn in sorted(glob.glob(pattern + "/*.0.raw")):
             #print("\x1b[H")
             #flp.status()
         
@@ -98,21 +98,21 @@ def main(args):
                 p = '-' * 32 + '####'
                 i = bdata.find(p)
                 if i < 0:
-                    print("No sync2", bdata)
+                    #print("No sync2", bdata)
                     #print("  h", bhdr)
                     #print("  g", bgap)
                     #print("  b", bdata)
                     continue
                 o = octets(bdata[i+4+8*2:])
                 if len(o) < 260:
-                    continue
-                    print("Short", len(bits), len(bdata), i, len(o), bdata)
+                    #print("Short", len(bits), len(bdata), i, len(o), bdata)
                     #print("  h", bhdr)
                     #print("  g", bgap)
                     #print("  b", bdata[i+4+8*2:])
                     #print("  o", hdr.hex(), o.hex())
                     continue
                 field = o[:259]
+                #print("O", o[259:267].hex())
                 csum = crc_func(field)
                 if csum != 0:
                     print("Bad CRC", hex(csum))
@@ -120,7 +120,7 @@ def main(args):
                     #print("  g", bgap)
                     #print("  b", bdata[i+4+8*2:])
                     #print("  o", hdr.hex(), o.hex())
-                    log.write("CRC " + hdr.hex() + " " + bdata[i+4+8*2:] + "\n")
+                    log.write("CRC %02d B " % tn + " " + hdr.hex() + " %04x " % csum + bdata[i+4+8*2:] + "\n")
                     continue
                 data = field[1:257]
                 rdg.read_sector(
