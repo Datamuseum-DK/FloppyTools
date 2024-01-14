@@ -26,7 +26,7 @@ class WangStream(kryostream.KryoStream):
         for _i, j in sorted(self.strm.items()):
             x = j
             j -= l
-            if 75 < j < 125:
+            if 75 <= j < 125:
                 b.append('--')
             elif 25 < j < 75:
                 b.append('#')
@@ -36,7 +36,7 @@ class WangStream(kryostream.KryoStream):
         self.b = ''.join(b)
 
     def iter_sec(self, tn):
-        gaplen = 128
+        gaplen = 96
         p = '-' * gaplen + '####'
         pfxlen = len(p)
         i = bin(256|tn)[3:]
@@ -50,7 +50,9 @@ class WangStream(kryostream.KryoStream):
             j = self.b.find(p, i)
             if j < 0:
                 return
-            yield j, self.b[j + pfxlen: j + pfxlen + 5100]
+            x = self.b[j + pfxlen: j + pfxlen + 5100]
+            if len(x) > 4900:
+                yield j, x
             i = j + 1
 
 def octets(s):
@@ -68,10 +70,14 @@ def octets(s):
 def main(args):
     flp = floppy.Floppy(77, 1, 16)
     flp.sect0 = 0
-    for pattern in args[1:]:
+    #print("\x1b[2J")
+    log = open(args[1] + ".log", "w")
+    for pattern in args[2:]:
         rdg = floppy.Reading(flp, pattern)
         flp.add_reading(rdg)
-        for fn in sorted(glob.glob(pattern)):
+        for fn in sorted(glob.glob(pattern + "/*57.0.raw")):
+            #print("\x1b[H")
+            #flp.status()
         
             tn = int(fn.split("bin")[1][:2])
             print("FN", fn, tn)
@@ -79,22 +85,42 @@ def main(args):
 
             ws.tobits()
             for idx, bits in ws.iter_sec(tn):
+                #print("B %5d" % len(bits), idx, bits)
                 bhdr = bits[:128]
-                bgap = bits[128:280]
-                bdata = bits[280:]
+                bgap = bits[128:270]
+                bdata = bits[270:]
     
                 hdr = octets(bhdr)
+                if sum(hdr[2:]):
+                    # False address mark, ignore
+                    continue
     
                 p = '-' * 32 + '####'
                 i = bdata.find(p)
                 if i < 0:
                     print("No sync2", bdata)
+                    #print("  h", bhdr)
+                    #print("  g", bgap)
+                    #print("  b", bdata)
                     continue
                 o = octets(bdata[i+4+8*2:])
+                if len(o) < 260:
+                    continue
+                    print("Short", len(bits), len(bdata), i, len(o), bdata)
+                    #print("  h", bhdr)
+                    #print("  g", bgap)
+                    #print("  b", bdata[i+4+8*2:])
+                    #print("  o", hdr.hex(), o.hex())
+                    continue
                 field = o[:259]
                 csum = crc_func(field)
                 if csum != 0:
-                    print("Bad CRC", bdata[i:])
+                    print("Bad CRC", hex(csum))
+                    #print("  h", bhdr)
+                    #print("  g", bgap)
+                    #print("  b", bdata[i+4+8*2:])
+                    #print("  o", hdr.hex(), o.hex())
+                    log.write("CRC " + hdr.hex() + " " + bdata[i+4+8*2:] + "\n")
                     continue
                 data = field[1:257]
                 rdg.read_sector(
@@ -107,13 +133,8 @@ def main(args):
                     )
                 )
         flp.status()
-    flp.write_bin("/tmp/_wang.flp", 256)
+    log.close()
+    flp.write_bin(args[1] + ".flp", 256)
 
-main(
-    [
-        "",
-        "/critter/DDHF/20231130_Wang/fiks11/*.0.raw",
-        "/critter/DDHF/20231207_Wang/wang0/*.0.raw",
-        "/critter/DDHF/20231207_Wang/wang1/*.0.raw",
-    ]
-)
+if __name__ == "__main__":
+    main(sys.argv)

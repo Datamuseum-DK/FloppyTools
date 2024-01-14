@@ -38,6 +38,53 @@ class Reading():
              self.sectors[sector.key] = [ sector ]
         self.floppy.read_sector(sector)
 
+class FloppySector():
+    ''' A sector on the floppy '''
+
+    def __init__(self, floppy, chs):
+        self.floppy = floppy
+        self.chs = chs
+        self.bad_readings = []
+        self.good_readings = []
+        self.vals = {}
+
+    def add_reading(self, readsect):
+        if not readsect.good:
+            self.bad_readings.append(readsect)
+            return
+        self.good_readings.append(readsect)
+        b = bytes(readsect.octets)
+        if not b in self.vals:
+            self.vals[b] = []
+        self.vals[b].append(readsect)
+
+    def __repr__(self):
+        i, j = self.negotiate()
+        return i
+
+    def data(self):
+        i, j = self.negotiate()
+        return j
+
+    def negotiate(self):
+        if not self.good_readings and self.bad_readings:
+            return 'b', None
+        if not self.good_readings:
+            return '-', None
+        if len(self.vals) == 1 and len(self.good_readings) > 9:
+            return '#', self.good_readings[0].octets
+        if len(self.vals) == 1:
+            return '%d' % len(self.good_readings), self.good_readings[0].octets
+        i = [(len(x),y) for y,x in self.vals.items()]
+        i.sort()
+        best = i.pop(-1)
+        counter = sum(a for a,b in i)
+        if best[0] > counter * 2:
+            return 'M',best[1]
+        if best[0] > counter:
+            return 'm',best[1]
+        return 'd', b'_UNREAD_' * (len(best[1]) // 8)
+
 class Floppy():
     ''' A physical floppy disk '''
 
@@ -56,44 +103,26 @@ class Floppy():
 
     def read_sector(self, sector):
         i = self.sectors.get(sector.key)
-        if i:
-             i.append(sector)
-        else:
-             self.sectors[sector.key] = [ sector ]
+        if not i:
+             i = FloppySector(self, sector.key)
+             self.sectors[sector.key] = i
+        i.add_reading(sector)
 
     def hasgood(self, cyl, hd, sect):
         retval = '-'
         isgood = None
         ngood = 0
-        for sr in self.sectors.get((cyl, hd, sect + self.sect0), []):
-            if not sr.good:
-                if retval == '-':
-                    retval = 'b'
-                continue
-            if retval == '-':
-                retval = '+'
-            if isgood is None:
-                isgood = sr
-            if sr != isgood:
-                print("SR0", sr.key, sr.octets)
-                print("SR1", isgood.key, isgood.octets)
-                return "d"
-            else:
-                ngood += 1
-        if retval == '+' and ngood > 9:
-            return "#"
-        if retval == '+':
-            return "%d" % ngood
-        return retval
+        fs = self.sectors.get((cyl, hd, sect + self.sect0))
+        if not fs:
+            return '-'
+        return str(fs)
 
     def getgood(self, cyl, hd, sect):
         isgood = None
-        for sr in self.sectors.get((cyl, hd, sect + self.sect0), []):
-            if sr.good and isgood is None:
-                isgood = sr
-            if sr.good and sr != isgood:
-                return None
-        return isgood
+        fs = self.sectors.get((cyl, hd, sect + self.sect0))
+        if fs:
+            return fs.data()
+        return None
 
     def badsects(self):
         for cyl in range(self.cyl_no):
@@ -103,10 +132,34 @@ class Floppy():
                     if i in 'd-':
                         yield i, (cyl, hd, sect + self.sect0)
 
-    def status(self, dst=None, just_summary=False):
-        if dst is None:
-            dst = sys.stdout
+    def pic_cyl_h(self, dst, just_summary):
         self.stats = {}
+        for sect in range(self.sect_no):
+            for hd in range(self.hd_no):
+                t = ""
+                for cyl in range(self.cyl_no):
+                    i = self.hasgood(cyl, hd, sect)
+                    j = self.stats.get(i, 0)
+                    self.stats[i] = j + 1
+                    t += i
+                if just_summary:
+                    continue
+                miss = t.count("-")
+                dst.write("%03d %2d %s /%2d\n" % (sect, hd, t, miss))
+        if just_summary:
+            return
+        t = " " * 7
+        for cyl in range(self.cyl_no):
+            if cyl % 10 == 0:
+                t += '|'
+            else:
+                t += ' '
+        dst.write(t + "\n")
+
+    def pic_cyl_v(self, dst, just_summary):
+        self.stats = {}
+        rpt = 0
+        prev = ""
         for cyl in range(self.cyl_no):
             for hd in range(self.hd_no):
                 t = ""
@@ -115,9 +168,27 @@ class Floppy():
                     j = self.stats.get(i, 0)
                     self.stats[i] = j + 1
                     t += i
-                miss = len(t.replace("+", ""))
-                if not just_summary:
-                    dst.write("%03d %2d %s /%2d\n" % (cyl, hd, t, miss))
+                if just_summary:
+                    continue
+                miss = t.count('-')
+                if t == prev:
+                    rpt += 1
+                    continue
+                if rpt:
+                    dst.write("* %d\n" % rpt)
+                    rpt = 0
+                dst.write("%03d %2d %s /%2d\n" % (cyl, hd, t, miss))
+                prev = t
+        if rpt:
+            dst.write("* %d\n" % rpt)
+
+    def status(self, dst=None, just_summary=False):
+        if dst is None:
+            dst = sys.stdout
+        if self.cyl_no <= 85:
+            self.pic_cyl_h(dst, just_summary)
+        else:
+            self.pic_cyl_v(dst, just_summary)
         total = 0
         for i, j in sorted(self.stats.items()):
             total += j
@@ -146,7 +217,5 @@ class Floppy():
                         sr = self.getgood(cyl, hd, sect)
                         if sr is None:
                             file.write(filler)
-                        elif sr.octets is None or len(sr.octets) != secsize:
-                            file.write(bogus)
                         else:
-                            file.write(sr.octets)
+                            file.write(sr)
