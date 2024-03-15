@@ -8,14 +8,30 @@
 import struct
 import crcmod
 
+import fluxstream
+
 crc16_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
 
 #sck=24027428.5714285
 #ick=3003428.5714285625
 
-class KryoStream():
+class NotAKryofluxStream(Exception):
+    ''' ... '''
+
+class KryoStream(fluxstream.FluxStream):
     ''' A Kryoflux Stream file '''
     def __init__(self, filename):
+        i = filename.split('.')
+        if i[-1] != 'raw':
+            raise NotAKryofluxStream("Does not end in ….raw")
+        if not i[-2].isdigit():
+            raise NotAKryofluxStream("Does not end in ….%d.raw")
+        if not i[-3][3:].isdigit():
+            raise NotAKryofluxStream("Does not end in …bin%d.%d.raw")
+        if i[-3][:3] != "bin":
+            raise NotAKryofluxStream("Does not end in …bin%d.%d.raw")
+        self.chs = (int(i[-3][3:]), int(i[-2]), None)
+
         self.filename = filename
         self.flux = {}
         self.strm = {}
