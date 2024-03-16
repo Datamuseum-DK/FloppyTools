@@ -12,17 +12,15 @@ import crcmod
 import fm_mod
 import sector
 import main
+import disk
 
 crc16_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
 
-class ZilogMCZ():
+class ZilogMCZ(disk.DiskFormat):
 
     FIRST_CHS = (0, 0, 0)
     LAST_CHS = (77, 0, 31)
-
-    def __init__(self, stream, source):
-        self.stream = stream
-        self.source = source
+    SECTOR_SIZE = 136
 
     def process(self):
         if self.stream.chs[1] not in (0, None):

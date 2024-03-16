@@ -20,10 +20,11 @@ class FluxStream():
                 b.append(' ')
         return ''.join(b)
 
-    def iter_gaps(self, fm, gaplen=128, minlen=128):
+    def iter_gaps(self, fm, gaplen=128, minlen=128, gap=None):
         ''' Iterate through all gaps in fm-string '''
         off = 0
-        gap = '--' * gaplen + "##"
+        if gap is None:
+            gap = '--' * gaplen + "##"
         minlen *= 16 + len(gap)
         while True:
             nxt = fm.find(gap, off)

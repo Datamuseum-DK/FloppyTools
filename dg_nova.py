@@ -8,17 +8,15 @@
 import fm_mod
 import sector
 import main
+import disk
 
-class DataGeneralNova():
+class DataGeneralNova(disk.DiskFormat):
 
     ''' Data General Nova 8" floppy disks '''
 
     FIRST_CHS = (0, 0, 0)
     LAST_CHS = (76, 0, 7)
-
-    def __init__(self, stream, source):
-        self.stream = stream
-        self.source = source
+    SECTOR_SIZE = 1024
 
     def process(self):
         if self.stream.chs[1] not in (0, None):
