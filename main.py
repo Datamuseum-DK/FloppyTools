@@ -16,6 +16,7 @@ import kryostream
 import zilog_mcz
 import dg_nova
 import ibm
+import dec_rx02
 
 COOLDOWN = 2
 
@@ -65,7 +66,7 @@ class Main():
             for line in media.status():
                 print(line)
         media.write_bin_file(dstname)
-        with open(dstname + ".status", "w", "utf8") as file:
+        with open(dstname + ".status", "w", encoding="utf8") as file:
             for line in media.status():
                 file.write(line + "\n")
         with open(dstname + ".meta", "w") as file:
@@ -116,9 +117,8 @@ class Main():
                     print(line + "\x1b[K")
                 sys.stdout.write("\x1b[J")
                 sys.stdout.flush()
-
-        if media:
-            self.finish_media(media, dstname, self.verbose == 0)
+            if media:
+                self.finish_media(media, dstname, self.verbose == 0)
 
     def monitor_mode(self):
         if len(sys.argv) == 2:
@@ -176,7 +176,8 @@ def main():
     Main(
         dg_nova.DataGeneralNova,
         zilog_mcz.ZilogMCZ,
-        ibm.IBM,
+        *ibm.ALL,
+        dec_rx02.DecRx02,
     )
 
 if __name__ == "__main__":
