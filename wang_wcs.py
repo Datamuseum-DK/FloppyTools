@@ -1,20 +1,23 @@
+#!/usr/bin/env python3
 
 '''
-	742-0652_928_Sys-10-20-30_Vol3_Theory_Of_Operation_19840817.pdf
-		pg 73
+   WANG WCS 8" floppy disks
+   ~~~~~~~~~~~~~~~~~~~~~~~~
+
+   742-0652_928_Sys-10-20-30_Vol3_Theory_Of_Operation_19840817.pdf (page 73)
 
 '''
+
 import crcmod
 
-import fm_mod
-import sector
 import main
 import disk
+import fluxstream
 
 crc_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
 
-AM_GAP = '--' * 32 + '##' * 2
-DATA_GAP = '--' * 24 + '##' * 2
+AM_MARK = '--|-' * 32 + '|-' * 3
+DATA_MARK = '--|-' * 24 + '|-' * 3
 
 class WangWcs(disk.DiskFormat):
 
@@ -24,46 +27,42 @@ class WangWcs(disk.DiskFormat):
     LAST_CHS = (76, 0, 15)
     SECTOR_SIZE = 256
 
-    def process(self):
-        if self.stream.chs[1] not in (0, None):
+    def process(self, stream):
+
+        if not self.validate_chs(stream.chs, none_ok=True):
+            print("Ignoring", stream)
             return
-        fm = self.stream.to_fm_250()
 
-        for sync in self.stream.iter_gaps(fm, gap=AM_GAP):
-            amark = fm_mod.tobytes(fm[sync:sync+6*16])
-            if amark is None:
-                continue
-            if max(amark[2:]):
-                continue
+        flux = fluxstream.ClockRecoveryFM().process(stream.iter_dt())
 
-            cyl_nbr = amark[0]
-            if cyl_nbr > 76:
-                continue
-            if self.stream.chs[0] not in (cyl_nbr, None):
-                continue
+        for am_pos in stream.iter_pattern(flux, pattern=AM_MARK):
 
-            sector_nbr = amark[1]
-            if sector_nbr > 0xf:
+            address_mark = stream.flux_data_fm(flux[am_pos:am_pos+6*32])
+            if address_mark is None:
+                continue
+            if max(address_mark[2:]):
+                continue
+            chs = self.validate_chs((address_mark[0], 0, address_mark[1]))
+            if not chs:
                 continue
 
-            dsync = fm.find(DATA_GAP, sync + 260)
-            if dsync < 0 or sync + 400 < dsync:
+            data_pos = flux.find(DATA_MARK, am_pos + 500)
+            if data_pos < 0 or am_pos + 800 < data_pos:
                 continue
-            dsync += len(DATA_GAP)
-            data = fm_mod.tobytes(fm[dsync:dsync+258*16])
+            data_pos += len(DATA_MARK)
+
+            data = stream.flux_data_fm(flux[data_pos:data_pos+((2+self.SECTOR_SIZE)*32)])
             if data is None:
-                print(amark.hex(), "NDATA")
-                continue
-            dsum = crc_func(data)
-            if dsum != 0x3f30:
-                print(amark.hex(), "CRC", hex(dsum))
                 continue
 
-            yield sector.Sector(
-                (cyl_nbr, 0, sector_nbr),
-                data[:256],
-                True,
-                self.source
+            data_crc = crc_func(b'\x03' + data)
+            if data_crc:
+                continue
+
+            yield disk.Sector(
+                chs,
+                data[:self.SECTOR_SIZE],
+                source=stream.filename,
             )
 
 if __name__ == "__main__":

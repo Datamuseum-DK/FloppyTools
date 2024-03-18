@@ -9,12 +9,11 @@
 
 import crcmod
 
-import fm_mod
-import sector
 import main
 import disk
+import fluxstream
 
-crc16_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
+crc_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
 
 class ZilogMCZ(disk.DiskFormat):
 
@@ -22,31 +21,35 @@ class ZilogMCZ(disk.DiskFormat):
     LAST_CHS = (77, 0, 31)
     SECTOR_SIZE = 136
 
-    def process(self):
-        if self.stream.chs[1] not in (0, None):
+    GAP = fluxstream.fm_gap(32)
+
+    def process(self, stream):
+
+        if not self.validate_chs(stream.chs, none_ok=True):
+            print("Ignoring", stream)
             return
-        fm = self.stream.to_fm_250()
-        for sync in self.stream.iter_gaps(fm, minlen=136):
-            sync -= 2
-            data = fm_mod.tobytes(fm[sync:sync+16*136])
+
+        flux = fluxstream.ClockRecoveryFM().process(stream.iter_dt())
+
+        for data_pos in stream.iter_pattern(flux, pattern=self.GAP):
+            data_pos -= 4
+
+            data = stream.flux_data_fm(flux[data_pos:data_pos+((2+self.SECTOR_SIZE)*32)])
             if data is None:
                 continue
-            csum = crc16_func(data)
-            if csum != 0:
+
+            data_crc = crc_func(data)
+            if data_crc != 0:
                 continue
-            sector_nbr = data[0] & 0x7f
-            if sector_nbr > 31:
+
+            chs = self.validate_chs((data[1], 0, data[0] & 0x7f))
+            if not chs:
                 continue
-            cyl_nbr = data[1]
-            if cyl_nbr > 77:
-                continue
-            if self.stream.chs[0] not in (cyl_nbr, None):
-                continue
-            yield sector.Sector(
-                (cyl_nbr, 0, sector_nbr),
+
+            yield disk.Sector(
+                chs,
                 data,
-                True,
-                self.source,
+                source=stream.filename,
             )
 
 if __name__ == "__main__":

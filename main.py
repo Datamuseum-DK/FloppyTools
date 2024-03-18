@@ -17,6 +17,7 @@ import zilog_mcz
 import dg_nova
 import ibm
 import dec_rx02
+import wang_wcs
 
 COOLDOWN = 2
 
@@ -48,8 +49,8 @@ class Main():
     def infer_media(self, streamfilename, media=None):
         ''' Infer the media format by asking all classes '''
         for cls in self.strm_class:
-            fmt = cls(kryostream.KryoStream(streamfilename), streamfilename)
-            i = list(fmt.process())
+            fmt = cls()
+            i = list(fmt.process(kryostream.KryoStream(streamfilename)))
             if len(i) == 0:
                 continue
             if media is None:
@@ -61,15 +62,12 @@ class Main():
             return media
         return None
 
-    def finish_media(self, media, dstname, verbose, medianame="XXX"):
-        if verbose:
-            for line in media.status():
-                print(line)
+    def finish_media(self, media, dstname, medianame="XXX"):
         media.write_bin_file(dstname)
         with open(dstname + ".status", "w", encoding="utf8") as file:
             for line in media.status():
                 file.write(line + "\n")
-        with open(dstname + ".meta", "w") as file:
+        with open(dstname + ".meta", "w", encoding="utf8") as file:
             for line in media.ddhf_meta(medianame):
                 file.write(line + "\n")
 
@@ -83,13 +81,17 @@ class Main():
                 if not sys.argv:
                     self.usage('-o lacks argument')
                 if media:
-                    self.finish_media(media, dstname, self.verbose == 0)
+                    self.finish_media(media, dstname)
                     media = None
                 dstname = sys.argv.pop(0)
                 continue
-            if sys.argv[0] == '-v':
-                sys.argv.pop(0)
-                self.verbose += 1
+            if sys.argv[0][:2] == '-v':
+                i = sys.argv.pop(0)
+                for j in i[1:]:
+                    if j == 'v':
+                        self.verbose += 1
+                        continue
+                    self.usage('unknown flag "%s"' % j)
                 if self.verbose > 1:
                     sys.stdout.write("\x1b[2J")
                 continue
@@ -99,11 +101,8 @@ class Main():
             if media is None:
                 media = self.infer_media(filename)
             else:
-                proc = media.format_class(
-                    kryostream.KryoStream(filename),
-                    filename
-                )
-                for sector in proc.process():
+                proc = media.format_class()
+                for sector in proc.process(kryostream.KryoStream(filename)):
                     media.add_sector(sector)
 
             if media and self.verbose == 1:
@@ -118,7 +117,7 @@ class Main():
                 sys.stdout.write("\x1b[J")
                 sys.stdout.flush()
             if media:
-                self.finish_media(media, dstname, self.verbose == 0)
+                self.finish_media(media, dstname)
 
     def monitor_mode(self):
         if len(sys.argv) == 2:
@@ -126,17 +125,31 @@ class Main():
         else:
             self.path = sys.argv[2]
 
-        print("\x1B[H\x1b[2J")
+        print("\x1b[H\x1b[2J")
+        summary = False
         while True:
             n = self.workload()
-            if n == 0:
+            if n != 0:
+                summary = True
+                continue
+            sys.stdout.write("Idle " + str(time.ctime()) + "\x1b[K\r")
+            sys.stdout.flush()
+            if not summary:
                 time.sleep(1)
-                print(time.time())
+                continue
+            print()
+            print("Incomplete media (if any):")
+            for name, media in sorted(self.media.items()):
+                i = list(media.defects())
+                if i:
+                    print(" ", name, ", ".join(i))
+                summary = False
 
     def workload(self):
         n = 0
         for fn in self.todo():
-            print(fn + "\x1b[K")
+            print("Processing", fn + "\x1b[J")
+            sys.stdout.flush()
             name_parts = fn.split('/')
             medianame = name_parts[-3]
             media = self.media.get(medianame)
@@ -147,18 +160,19 @@ class Main():
             if not media.format_class:
                 self.infer_media(fn, media=media)
             else:
-                proc = media.format_class(kryostream.KryoStream(fn), fn)
-                for sector in proc.process():
+                proc = media.format_class()
+                for sector in proc.process(kryostream.KryoStream(fn)):
                     media.add_sector(sector)
 
             sys.stdout.write("\x1b[H")
-            print(medianame + "\x1b[K")
+            print(medianame + " after " + fn + "\x1b[K")
             for line in media.status():
                 print(line + "\x1b[K")
+            print("\x1b[J")
             sys.stdout.flush()
 
             dstname = '/'.join(name_parts[:-2]) + "/_" + name_parts[-3] + ".bin"
-            self.finish_media(media, dstname, False, medianame=medianame)
+            self.finish_media(media, dstname, medianame=medianame)
             self.files_done.add(fn)
             n += 1
         return n
@@ -178,6 +192,7 @@ def main():
         zilog_mcz.ZilogMCZ,
         *ibm.ALL,
         dec_rx02.DecRx02,
+        wang_wcs.WangWcs,
     )
 
 if __name__ == "__main__":

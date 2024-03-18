@@ -7,9 +7,9 @@
 
 import crcmod
 
-import sector
 import main
 import disk
+import fluxstream
 
 crc_func = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 
@@ -30,35 +30,19 @@ class IbmFm(disk.DiskFormat):
     def validate_address_mark(self, address_mark):
         ''' ... '''
 
-        cyl_nbr = address_mark[1]
-        if cyl_nbr > self.LAST_CHS[0]:
-            return None
-        if self.stream.chs[0] not in (cyl_nbr, None):
-            return None
+        return self.validate_chs(address_mark[1:4])
 
-        head_nbr = address_mark[2]
-        if head_nbr > self.LAST_CHS[1]:
-            return None
-
-        sector_nbr = address_mark[3]
-        if sector_nbr < self.FIRST_CHS[2]:
-            return None
-        if sector_nbr > self.LAST_CHS[2]:
-            return None
-
-        return (cyl_nbr, head_nbr, sector_nbr)
-
-    def process(self):
+    def process(self, stream):
         ''' ...  '''
 
-        am_pattern = '|---' * self.GAP1 + self.stream.make_mark(*self.ADDRESS_MARK)
-        data_pattern = '|---' * self.GAP1 + self.stream.make_mark(*self.DATA_MARK)
-        delete_pattern = '|---' * self.GAP1 + self.stream.make_mark(*self.DELETE_MARK)
+        am_pattern = '|---' * self.GAP1 + stream.make_mark(*self.ADDRESS_MARK)
+        data_pattern = '|---' * self.GAP1 + stream.make_mark(*self.DATA_MARK)
+        delete_pattern = '|---' * self.GAP1 + stream.make_mark(*self.DELETE_MARK)
 
-        flux = self.stream.flux_250_fm()
+        flux = fluxstream.ClockRecoveryFM().process(stream.iter_dt())
 
-        for am_pos in self.stream.iter_pattern(flux, pattern=am_pattern):
-            address_mark = self.stream.flux_data_fm(flux[am_pos-32:am_pos+(6*32)])
+        for am_pos in stream.iter_pattern(flux, pattern=am_pattern):
+            address_mark = stream.flux_data_fm(flux[am_pos-32:am_pos+(6*32)])
             if address_mark is None:
                 continue
 
@@ -81,7 +65,7 @@ class IbmFm(disk.DiskFormat):
             if data_pos < 0:
                 continue
 
-            data = self.stream.flux_data_fm(flux[data_pos-32:data_pos+((2+self.SECTOR_SIZE)*32)])
+            data = stream.flux_data_fm(flux[data_pos-32:data_pos+((2+self.SECTOR_SIZE)*32)])
             if data is None:
                 continue
 
@@ -89,11 +73,10 @@ class IbmFm(disk.DiskFormat):
             if data_crc:
                 continue
 
-            yield sector.Sector(
+            yield disk.Sector(
                 chs,
                 data[1:self.SECTOR_SIZE+1],
-                True,
-                self.source
+                source=stream.filename,
             )
 
 class IbmFm128Ss(IbmFm):
@@ -134,11 +117,11 @@ class IbmFm512Ds(IbmFm):
 
 ALL = (
     IbmFm128Ss,
-    IbmFm128Ds,
-    IbmFm256Ss,
-    IbmFm256Ds,
-    IbmFm512Ss,
-    IbmFm512Ds,
+    #IbmFm128Ds,
+    #IbmFm256Ss,
+    #IbmFm256Ds,
+    #IbmFm512Ss,
+    #IbmFm512Ds,
 )
 
 if __name__ == "__main__":

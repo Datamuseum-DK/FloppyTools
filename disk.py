@@ -65,10 +65,6 @@ class DiskFormat():
     LAST_CHS = None
     SECTOR_SIZE = None
 
-    def __init__(self, stream, source):
-        self.stream = stream
-        self.source = source
-
     def define_geometry(self, media):
         ''' Propagate geometry (if any) to media '''
         if self.FIRST_CHS and self.LAST_CHS:
@@ -77,6 +73,35 @@ class DiskFormat():
                 self.LAST_CHS,
                 self.SECTOR_SIZE
             )
+
+    def validate_chs(self, chs, none_ok=False, stream=None):
+        ''' Validate a CHS against the geometry '''
+        for n, i in enumerate(chs):
+            if none_ok and i is None:
+                continue
+            if self.FIRST_CHS is not None and i < self.FIRST_CHS[n]:
+                return False
+            if self.LAST_CHS is not None and i > self.LAST_CHS[n]:
+                return False
+            if stream and stream.chs[n] not in (None, i):
+                return False
+        return tuple(chs)
+
+class Sector():
+    ''' A single sector, read by a Reading '''
+
+    def __init__(self, chs, octets, good=True, source=""):
+        assert len(chs) == 3
+        self.chs = chs
+        self.octets = octets
+        self.good = good
+        self.source = source
+
+    def __str__(self):
+        return str((self.chs, self.good, len(self.octets)))
+
+    def __eq__(self, other):
+        return self.octets == other.octets and self.good == other.good
 
 class DiskSector():
     ''' A sector on the disk image (keeps track of readings) '''
@@ -102,20 +127,36 @@ class DiskSector():
         i.append(read_sector)
         self.lengths.add(len(read_sector.octets))
 
+    def find_majority(self):
+        chosen = None
+        majority = 0
+        for i, j in self.values.items():
+            if len(j) > majority:
+                majority = len(j)
+                chosen = i
+        minority = len(self.readings) - majority
+        if majority > 2 * minority:
+            return chosen
+        # print(self.chs, "majority", majority, "minority", minority, "candidates", len(self.values))
+        return None
+
     def status(self):
         ''' Report status and visual aid '''
         if len(self.values) == 0:
             return False, '╳'
         if len(self.values) <= 1:
             return True, "╳▁▂▃▄▅▆▇█"[min(len(self.readings), 7)]
-        return False, '▒'
+        if self.find_majority():
+            return True, "░"
+        return False, '╬'
 
     def write_data(self):
         ''' Return data to be written '''
         if len(self.values) == 0:
             return None
-        assert len(self.values) == 1
-        return list(self.values.keys())[0]
+        if len(self.values) == 1:
+            return list(self.values.keys())[0]
+        return self.find_majority()
 
 class Disk():
     ''' A disk media '''
@@ -245,6 +286,8 @@ class Disk():
                     _j, k = disk_sector.status()
                     i.append(k)
                 yield ''.join(i)
+
+    def list_defects(self):
         i = list(self.defects())
         if len(i) > 0:
             yield "Defects: " + ", ".join(i)
@@ -259,10 +302,12 @@ class Disk():
 
     def status(self):
         ''' Produce a status/progress display '''
-        i = ["Status", str(self.geometry())]
+        i = []
         if self.format_class:
-            i.append(self.format_class.__name__)
+            i.append("Format " + self.format_class.__name__)
+        i.append("Geometry " + str(self.geometry()))
         yield "  ".join(i)
+        yield from self.list_defects()
         if len(self.has_cylinders) <= 85:
             yield from self.horizontal_status()
 
