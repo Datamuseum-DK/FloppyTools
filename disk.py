@@ -65,6 +65,8 @@ class DiskFormat():
     LAST_CHS = None
     SECTOR_SIZE = None
 
+    media = None
+
     def define_geometry(self, media):
         ''' Propagate geometry (if any) to media '''
         if self.FIRST_CHS and self.LAST_CHS:
@@ -74,28 +76,33 @@ class DiskFormat():
                 self.SECTOR_SIZE
             )
 
+    def cached_sector(self, read_sector):
+        ''' ... '''
+        self.media.add_sector(read_sector)
+
     def validate_chs(self, chs, none_ok=False, stream=None):
         ''' Validate a CHS against the geometry '''
         for n, i in enumerate(chs):
             if none_ok and i is None:
                 continue
             if self.FIRST_CHS is not None and i < self.FIRST_CHS[n]:
-                return False
+                return None
             if self.LAST_CHS is not None and i > self.LAST_CHS[n]:
-                return False
+                return None
             if stream and stream.chs[n] not in (None, i):
-                return False
+                return None
         return tuple(chs)
 
 class Sector():
     ''' A single sector, read by a Reading '''
 
-    def __init__(self, chs, octets, good=True, source=""):
+    def __init__(self, chs, octets, good=True, source=None, extra=""):
         assert len(chs) == 3
         self.chs = chs
         self.octets = octets
         self.good = good
         self.source = source
+        self.extra = extra
 
     def __str__(self):
         return str((self.chs, self.good, len(self.octets)))
@@ -103,7 +110,15 @@ class Sector():
     def __eq__(self, other):
         return self.octets == other.octets and self.good == other.good
 
-class DiskSector():
+    def cache_record(self):
+        return [
+            "%d,%d,%d" % self.chs,
+            self.octets.hex(),
+            str(self.extra)
+        ]
+
+class MediaSector():
+
     ''' A sector on the disk image (keeps track of readings) '''
 
     def __init__(self, chs):
@@ -114,6 +129,9 @@ class DiskSector():
 
     def __len__(self):
         return len(self.readings)
+
+    def __lt__(self, other):
+        return self.chs < other.chs
 
     def add_sector(self, read_sector):
         ''' Add a reading of this sector '''
@@ -158,7 +176,7 @@ class DiskSector():
             return list(self.values.keys())[0]
         return self.find_majority()
 
-class Disk():
+class Media():
     ''' A disk media '''
 
     def __init__(self):
@@ -171,29 +189,35 @@ class Disk():
         self.format_class = None
 
     def __str__(self):
-        return "{DISK " + self.geometry() + "}"
+        return "{MEDIA " + self.geometry() + "}"
+
+    def iter_sectors(self):
+        yield from sorted(self.disk_sectors.values())
 
     def define_geometry(self, first_chs, last_chs, sector_size = None):
         ''' Define (part) of the geometry '''
         assert len(first_chs) == 3
         assert len(last_chs) == 3
         for cyl in range(first_chs[0], last_chs[0]+1):
-            self.has_cylinders.add(cyl)
             for head in range(first_chs[1], last_chs[1]+1):
-                self.has_heads.add(head)
                 for sector in range(first_chs[2], last_chs[2]+1):
-                    #self.has_sectors[sector] = sector_size
-                    self.has_sectors.add(sector)
                     chs = (cyl, head, sector)
-                    self.disk_sectors[chs] = DiskSector(chs)
+                    self.define_sector(chs)
         self.defined_geometry = True
+
+    def define_sector(self, chs):
+        if chs not in self.disk_sectors:
+            self.has_cylinders.add(chs[0])
+            self.has_heads.add(chs[1])
+            self.has_sectors.add(chs[2])
+            self.disk_sectors[chs] = MediaSector(chs)
 
     def add_sector(self, read_sector):
         ''' Add a reading of a sector '''
         self.last_addition = read_sector.chs
         disksector = self.disk_sectors.get(read_sector.chs)
         if disksector is None:
-            disksector = DiskSector(read_sector.chs)
+            disksector = MediaSector(read_sector.chs)
             self.disk_sectors[read_sector.chs] = disksector
             self.has_cylinders.add(read_sector.chs[0])
             self.has_heads.add(read_sector.chs[1])
@@ -270,18 +294,19 @@ class Disk():
                 l1.append(':')
             else:
                 l1.append('.')
-        yield ''.join(l1)
+        hdr = ''.join(l1)
 
         for head in sorted(self.has_heads):
             if len(self.has_heads) > 1:
                 yield "head=%d" % head
+            yield hdr
             for sector in sorted(self.has_sectors):
                 i = []
                 for cylinder in sorted(self.has_cylinders):
                     chs = (cylinder, head, sector)
                     disk_sector = self.disk_sectors.get(chs)
                     if disk_sector is None:
-                        i.append('╳')
+                        i.append(' ')
                         continue
                     _j, k = disk_sector.status()
                     i.append(k)
@@ -290,9 +315,8 @@ class Disk():
     def list_defects(self):
         i = list(self.defects())
         if len(i) > 0:
-            yield "Defects: " + ", ".join(i)
-        else:
-            yield "Complete"
+            return "Defects: " + ", ".join(i)
+        return None
 
     def iter_chs(self):
         for cylinder in range(min(self.has_cylinders), max(self.has_cylinders) + 1):
@@ -304,16 +328,22 @@ class Disk():
         ''' Produce a status/progress display '''
         i = []
         if self.format_class:
-            i.append("Format " + self.format_class.__name__)
+            i.append("Format " + self.format_class.__class__.__name__)
         i.append("Geometry " + str(self.geometry()))
         yield "  ".join(i)
-        yield from self.list_defects()
         if len(self.has_cylinders) <= 85:
             yield from self.horizontal_status()
+        i = self.list_defects()
+        if i:
+            yield i
+        else:
+            yield "Complete"
 
     def write_bin_file(self, filename):
         lengths = self.sector_lengths()
         if len(lengths) == 0:
+            return
+        if len(lengths) != 1:
             return
         assert len(lengths) == 1
         sector_length = list(lengths)[0]
