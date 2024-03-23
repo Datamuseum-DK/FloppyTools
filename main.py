@@ -49,10 +49,10 @@ class MediaDir():
                 ) + "\n"
             )
 
-    def process_file(self, streamfilename):
+    def process_file(self, streamfilename, force=False):
         ''' Infer the media format by asking all classes '''
         rel_filename = os.path.relpath(streamfilename, self.dirname)
-        if rel_filename in self.files_done:
+        if rel_filename in self.files_done and not force:
             # print("##", streamfilename, "(already in cache)")
             return False
         print("##", streamfilename)
@@ -86,9 +86,9 @@ class MediaDir():
             self.cache_file.flush()
         return True
 
-    def status(self):
+    def status(self, detailed=False):
         yield "Directory " + self.dirname
-        yield from self.media.status()
+        yield from self.media.status(detailed)
 
     def cache_file_name(self):
         return os.path.join(self.dirname, self.basename + ".ft_cache")
@@ -166,6 +166,7 @@ class Main():
         sys.argv.pop(0)
         sys.argv.pop(0)
         self.dirname = sys.argv.pop(0)
+            
         mdir = MediaDir(self.dirname, self.format_classes)
         if len(sys.argv) == 0:
             sys.argv = list(
@@ -173,15 +174,27 @@ class Main():
                     glob.glob(os.path.join(self.dirname, "*", "*.raw"))
                 )
             )
+
+        if sys.argv and sys.argv[0] == '-r':
+            sys.argv.pop(0)
+            for disk_sector in mdir.media.iter_sectors():
+                i, j = disk_sector.status()
+                if not i:
+                    mdir.media.format_class.repair.add(disk_sector.chs)
+            print("Trying to repair:", mdir.media.format_class.repair)
+            repair=True
+        else:
+            repair=False
+
         if len(sys.argv) == 0:
             print("No files found")
             exit(2)
         for filename in sys.argv:
-            if mdir.process_file(filename):
+            if mdir.process_file(filename, force=repair):
                 for line in mdir.status():
                     print(line)
                 sys.stdout.flush()
-        for line in mdir.status():
+        for line in mdir.status(detailed=True):
             print(line)
         sys.stdout.flush()
 

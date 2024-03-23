@@ -66,6 +66,7 @@ class DiskFormat():
     SECTOR_SIZE = None
 
     media = None
+    repair = set()
 
     def define_geometry(self, media):
         ''' Propagate geometry (if any) to media '''
@@ -258,7 +259,7 @@ class Media():
             dset.add_defect(chs)
         return "+".join(dset)
 
-    def defects(self):
+    def defects(self, detailed=False):
         ''' Report defect status '''
         ndef = 0
         dset = CHSSet()
@@ -270,6 +271,10 @@ class Media():
         if ndef == 0:
             return
         yield str(ndef)
+
+        if detailed:
+            yield from dset
+            return
 
         if len(dset) > 5:
             dset = CHSSet()
@@ -284,22 +289,22 @@ class Media():
             yield "(possibly more: no defined geometry)"
 
     def horizontal_status(self):
-        l1 = []
-        for cylinder in sorted(self.has_cylinders):
-            if cylinder == self.last_addition[0]:
-                l1.append('↓')
-            elif cylinder % 10 == 0:
-                l1.append('%d' % (cylinder // 10))
-            elif cylinder % 10 == 5:
-                l1.append(':')
-            else:
-                l1.append('.')
-        hdr = ''.join(l1)
-
         for head in sorted(self.has_heads):
             if len(self.has_heads) > 1:
                 yield "head=%d" % head
-            yield hdr
+
+            l1 = []
+            for cylinder in sorted(self.has_cylinders):
+                if cylinder == self.last_addition[0] and head == self.last_addition[1]:
+                    l1.append('↓')
+                elif cylinder % 10 == 0:
+                    l1.append('%d' % (cylinder // 10))
+                elif cylinder % 10 == 5:
+                    l1.append(':')
+                else:
+                    l1.append('.')
+            yield ''.join(l1)
+
             for sector in sorted(self.has_sectors):
                 i = []
                 for cylinder in sorted(self.has_cylinders):
@@ -324,7 +329,7 @@ class Media():
                 for sector in range(min(self.has_sectors), max(self.has_sectors) + 1):
                     yield(cylinder, head, sector)
 
-    def status(self):
+    def status(self, detailed=False):
         ''' Produce a status/progress display '''
         i = []
         if self.format_class:
@@ -334,10 +339,13 @@ class Media():
         if len(self.has_cylinders) <= 85:
             yield from self.horizontal_status()
         i = self.list_defects()
-        if i:
+        if not i:
+            yield "Complete"
+        elif not detailed:
             yield i
         else:
-            yield "Complete"
+            yield "Defects:"
+            yield from ("\t" + x for x in sorted(self.defects(detailed)))
 
     def write_bin_file(self, filename):
         lengths = self.sector_lengths()

@@ -13,6 +13,19 @@ import main
 import disk
 import fluxstream
 
+MFM_LUT = {
+    "--|--", #00
+    "--|-|", #00
+    "|-|--", #00
+    "|-|-|", #00
+    "|--|-", #01
+    "---|-", #01
+    "-|---", #10
+    "-|--|", #10
+    "-|-|-", #11
+}
+
+
 crc_func = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 
 class MfmRecovery(fluxstream.ClockRecovery):
@@ -42,7 +55,7 @@ class IbmFm(disk.DiskFormat):
     DATA_MARK = (0xc7, 0xfb)
     DELETE_MARK = (0xc7, 0xf8)
     GAP1 = 16
-    MAX_GAP2 = 50
+    MAX_GAP2 = 100
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -114,7 +127,6 @@ class IbmFm(disk.DiskFormat):
         am_list = list(stream.iter_pattern(flux, pattern=fm_am_pattern))
 
         if len(am_list) > 0:
-            print("FM", len(am_list))
             sys.stdout.flush()
             yield from self.fm_process(stream, flux, am_list)
             return
@@ -123,7 +135,6 @@ class IbmFm(disk.DiskFormat):
 
         am_list = list(stream.iter_pattern(flux, pattern=mfm_am_pattern))
         if len(am_list) > 0:
-            print("MFM", len(am_list))
             sys.stdout.flush()
             self.fm_first = False
             yield from self.mfm_process(stream, flux, am_list)
@@ -131,32 +142,44 @@ class IbmFm(disk.DiskFormat):
 
     def mfm_process(self, stream, flux, am_list):
 
-        data_pattern = '|-' * 32
+        data_pattern = '|-' * 16
                        #  1 0 1 0 0 0 0 1 1 0 1 0 0 0 0 1   xa1a1
         data_pattern += '-|---|--|---|--|-|---|--|---|--|'
 
         for am_pos in am_list:
+            extra = ["mfm"]
             address_mark = stream.flux_data_mfm(flux[am_pos-64:am_pos+(6*16)])
             if address_mark is None:
-                #print("NOAM", am_pos)
+                print("NOAM", am_pos)
                 continue
 
             am_crc = crc_func(address_mark)
+
+            if self.repair and am_crc:
+                am_crc, address_mark, how = self.mfm_fix(
+                    stream,
+                    flux[am_pos-16:am_pos+(6*16)+6],
+                    7*16,
+                    b'\xa1\xa1\xa1',
+                )
+                if am_crc == 0:
+                    extra.append(how)
+
             if am_crc:
-                #print("AMCRC", "%04x" % am_crc, address_mark.hex())
                 continue
 
             chs = self.validate_address_mark(address_mark[3:])
             if chs is None:
-                print("CHS", address_mark.hex())
+                #print("CHS", address_mark.hex())
                 continue
 
-            data_pos = flux.find(data_pattern, am_pos)
-            if data_pos < 0:
-                #print("NO DATA_POS", am_pos)
+            if self.repair and chs not in self.repair:
                 continue
-            if data_pos > am_pos + self.MAX_GAP2 * 16:
-                #print("DP>", data_pos - am_pos)
+
+            data_pos = flux.find(data_pattern, am_pos + 20 * 16, am_pos + 60 * 16)
+            if data_pos < 0:
+                if self.repair:
+                    print("REPAIR: NO DATA_POS", chs, am_pos)
                 continue
             data_pos += len(data_pattern)
 
@@ -166,10 +189,21 @@ class IbmFm(disk.DiskFormat):
             width = (6 + sector_size) * 16
             data = stream.flux_data_mfm(flux[data_pos+off:data_pos+width+off])
             if data is None:
-                #print("NO DATA", am_pos, data_pos, data_pos - am_pos)
+                if self.repair:
+                    print("REPAIR: NO DATA", chs, am_pos, data_pos, data_pos - am_pos)
                 continue
 
             data_crc = crc_func(data)
+
+            if data_crc and self.repair:
+                data_crc, data, how = self.mfm_fix(
+                    stream,
+                    flux[data_pos+16:data_pos+width+off+6],
+                    (3 + sector_size) * 16,
+                    b'\xa1\xa1\xa1',
+                )
+                if data_crc == 0:
+                    extra.append(how)
 
             if data_crc:
                 #print("DCRC", "%04x" % data_crc, data[:16].hex(), data[-16:].hex())
@@ -178,10 +212,48 @@ class IbmFm(disk.DiskFormat):
             self.add_geometry(chs, sector_size, True)
             yield disk.Sector(
                 chs,
-                data[1:sector_size+1],
+                data[4:sector_size+4],
                 source=stream.filename,
-                extra="mfm",
+                extra=",".join(extra),
             )
+
+
+    def mfm_invalid(self, flux):
+        for n in range(0, len(flux)-5, 2):
+            if flux[n:n+5] not in MFM_LUT:
+                return n
+        return -1
+
+    def mfm_fix(self, stream, flux, length, prefix=b''):
+        ''' Try to fix invalid MFM flux '''
+        n = self.mfm_invalid(flux)
+        print("FL %5d %5d %5d" % (n, len(flux), length), flux[:64])
+        if n < 0:
+            return 0xffff, b'', ""
+        for i in range(n + 5, max(n-200, 0), -1):
+            if flux[i:i+3] == '--|':
+                ftry = flux[:i] + flux[i+1:]
+                if self.mfm_invalid(ftry) < 0:
+                    d = prefix + stream.flux_data_mfm(ftry[:length])
+                    c = crc_func(d)
+                    if not c:
+                        print("FL REPAIR", "DEL", i, i - n, d[:32].hex())
+                        return c, d, "DEL=%d" % i
+                    print("FL TRY DEL", "%04x" % c, i - n, d[:32].hex(), ftry[:64])
+            if flux[i] == '|':
+                ftry = flux[:i] + '-' + flux[i:-2]
+                #print("A", flux[i-10:i+10])
+                #print("B", ftry[i-10:i+10])
+                if self.mfm_invalid(ftry) < 0:
+                    d = prefix + stream.flux_data_mfm(ftry[:length])
+                    c = crc_func(d)
+                    if not c:
+                        print("FL REPAIR", "ADD", i, i - n, d[:32].hex())
+                        return c, d, "ADR=%d" % i
+                    print("FL TRY ADD", "%04x" % c, i - n, d[:32].hex(), ftry[:64])
+
+        return 0xffff, b'', ""
+  
 
     def fm_process(self, stream, flux, am_list):
         data_pattern = '|---' * self.GAP1 + stream.make_mark(*self.DATA_MARK)
