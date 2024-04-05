@@ -28,21 +28,6 @@ MFM_LUT = {
 
 crc_func = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 
-class MfmRecovery(fluxstream.ClockRecovery):
-
-    # Hand tuned
-    RATE = 50e-3
-
-    # Half a period on traditional 8" floppies
-    LIMIT = 12.5
-
-
-    SPEC = {
-        50: "-|",
-        75: "--|",
-        100: "---|",
-    }
-
 class IbmFm(disk.DiskFormat):
 
     ''' IBM format 8" floppy disks '''
@@ -130,8 +115,8 @@ class IbmFm(disk.DiskFormat):
             sys.stdout.flush()
             yield from self.fm_process(stream, flux, am_list)
             return
-    
-        flux = MfmRecovery().process(stream.iter_dt())
+
+        flux = fluxstream.ClockRecoveryMFM().process(stream.iter_dt())
 
         am_list = list(stream.iter_pattern(flux, pattern=mfm_am_pattern))
         if len(am_list) > 0:

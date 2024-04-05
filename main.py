@@ -13,13 +13,6 @@ import time
 import disk
 import kryostream
 
-import zilog_mcz
-import dg_nova
-import ibm
-import dec_rx02
-import wang_wcs
-import hp98xx
-
 COOLDOWN = 2
 
 import math
@@ -33,7 +26,7 @@ def histo(data):
         return
 
     h = [int(H * x / peak) for x in data]
-    
+
     for j in range(-H, 1, 8):
         t = []
         for i in h:
@@ -126,33 +119,33 @@ class MediaDir():
             print("# read cache", self.cache_file_name())
             with open(self.cache_file_name(), "r") as file:
                 for line in file:
-                     line = line.split()
-                     if line[0] == "format":
-                         for cls in self.format_classes:
-                             if cls.__name__ != line[1]:
+                    line = line.split()
+                    if line[0] == "format":
+                        for cls in self.format_classes:
+                            if cls.__name__ != line[1]:
                                 continue
-                             fmt = cls()
-                             fmt.define_geometry(self.media)
-                             self.media.format_class = fmt
-                             fmt.media = self.media
-                         continue
-                     if line[0] == "file":
-                         self.files_done.add(line[1])
-                         continue
-                     if line[0] == "sector":
-                         chs = tuple(int(x) for x in line[2].split(","))
-                         octets = bytes.fromhex(line[3])
-                         if len(line) > 4:
-                             extra = line[4]
-                         else:
-                             extra = ""
-                         self.media.format_class.cached_sector(
-                             disk.Sector(chs, octets, source=line[1], extra=extra)
-                         )
-                         continue
-                     print("Invalid cache line")
-                     print("   ", line)
-                     exit(2)
+                            fmt = cls()
+                            fmt.define_geometry(self.media)
+                            self.media.format_class = fmt
+                            fmt.media = self.media
+                        continue
+                    if line[0] == "file":
+                        self.files_done.add(line[1])
+                        continue
+                    if line[0] == "sector":
+                        chs = tuple(int(x) for x in line[2].split(","))
+                        octets = bytes.fromhex(line[3])
+                        if len(line) > 4:
+                            extra = line[4]
+                        else:
+                            extra = ""
+                        self.media.format_class.cached_sector(
+                            disk.Sector(chs, octets, source=line[1], extra=extra)
+                        )
+                        continue
+                    print("Invalid cache line")
+                    print("   ", line)
+                    exit(2)
         except FileNotFoundError:
             pass
 
@@ -209,7 +202,7 @@ class Main():
         sys.argv.pop(0)
         sys.argv.pop(0)
         self.dirname = sys.argv.pop(0)
-            
+
         mdir = MediaDir(self.dirname, self.format_classes)
         if len(sys.argv) == 0:
             sys.argv = list(
@@ -282,7 +275,7 @@ class Main():
         for fn in self.todo():
             relname = os.path.relpath(fn, self.path)
             medianame = os.path.split(os.path.split(relname)[0])[0]
-            if medianame != cur_media: 
+            if medianame != cur_media:
                 if mdir:
                     self.defects[cur_media] = mdir.media.list_defects()
                     sys.stdout.write(self.HOME)
@@ -317,16 +310,3 @@ class Main():
             if st.st_mtime + COOLDOWN > time.time():
                 continue
             yield fn
-
-def main():
-    Main(
-        *ibm.ALL,
-        dg_nova.DataGeneralNova,
-        zilog_mcz.ZilogMCZ,
-        dec_rx02.DecRx02,
-        wang_wcs.WangWcs,
-        *hp98xx.ALL,
-    )
-
-if __name__ == "__main__":
-    main()

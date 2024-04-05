@@ -436,7 +436,6 @@ class Media():
                     assert len(data) == length
                     fo.write(b'\x01') # Normal sector data
                     fo.write(data)
- 
 
     def ddhf_meta(self, basename):
         ''' Emit DDHF bitstore metadata information '''

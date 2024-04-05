@@ -33,9 +33,9 @@ class Reading():
         sector.reading = self
         i = self.sectors.get(sector.key)
         if i:
-             i.append(sector)
+            i.append(sector)
         else:
-             self.sectors[sector.key] = [ sector ]
+            self.sectors[sector.key] = [ sector ]
         self.floppy.read_sector(sector)
 
 class FloppySector():
@@ -104,8 +104,8 @@ class Floppy():
     def read_sector(self, sector):
         i = self.sectors.get(sector.key)
         if not i:
-             i = FloppySector(self, sector.key)
-             self.sectors[sector.key] = i
+            i = FloppySector(self, sector.key)
+            self.sectors[sector.key] = i
         i.add_reading(sector)
 
     def hasgood(self, cyl, hd, sect):
@@ -193,7 +193,7 @@ class Floppy():
         for i, j in sorted(self.stats.items()):
             total += j
             dst.write("'%s' %4d\n" % (i, j))
-        
+
         dst.write("Tot %4d\n" % total)
 
     def missing(self, dst=None):

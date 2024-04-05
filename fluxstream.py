@@ -135,8 +135,6 @@ class FluxStream():
         ''' Iterate through all gaps in fm-string '''
         off = 0
         if pattern is None:
-            pattern = gap
-        if pattern is None:
             pattern = '--' * gaplen + "##"
         minlen *= 16 + len(pattern)
         while True:

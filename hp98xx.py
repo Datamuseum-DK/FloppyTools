@@ -14,14 +14,16 @@ import rev_bits
 
 crc_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
 
-#                               d d d d d d d d
-#                                c c c c c c c c 
+#                                d d d d d d d d
+#                               c c c c c c c c
 AM = '--|-' * 10 + '-|' * 32 + '--|-|-|--|-|-|--'
 DM = '--|-' * 10 + '-|' * 32 + '--|-|-|--|---|--'
 
 crc_func = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 
 class HP9885(disk.DiskFormat):
+
+    ''' HP9885 8" floppies for MX21 '''
 
     FIRST_CHS = (0, 0, 0)
     LAST_CHS = (66, 0, 29)
@@ -41,7 +43,6 @@ class HP9885(disk.DiskFormat):
             if amc:
                 print("AMC", am.hex())
                 continue
-            #am = bytes(x^0xff for x in am)
             data_pos = flux.find(DM, am_pos + 200, am_pos + 500)
             if data_pos < 0:
                 print(
@@ -87,8 +88,6 @@ class HP9885(disk.DiskFormat):
                     data,
                 )
             prev = am_pos
-        return
-        yield None
 
 ALL = [
     HP9885,
