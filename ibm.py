@@ -142,7 +142,7 @@ class IbmFm(disk.DiskFormat):
 
     def mfm_process(self, stream, flux, am_list):
 
-        data_pattern = '|-' * 16
+        data_pattern = '|-' * 16 * 2
                        #  1 0 1 0 0 0 0 1 1 0 1 0 0 0 0 1   xa1a1
         data_pattern += '-|---|--|---|--|-|---|--|---|--|'
 
@@ -177,9 +177,11 @@ class IbmFm(disk.DiskFormat):
                 continue
 
             data_pos = flux.find(data_pattern, am_pos + 20 * 16, am_pos + 60 * 16)
+            # self.correlate(flux, am_pos, am_pos + 20 * 16, am_pos + 60 * 16 + len(data_pattern), data_pattern)
             if data_pos < 0:
                 if self.repair:
-                    print("REPAIR: NO DATA_POS", chs, am_pos)
+                    print("REPAIR: NO DATA_POS", chs, am_pos, flux[am_pos + 20 * 16:am_pos + 60 * 16])
+                    self.correlate(flux, am_pos, am_pos + 20 * 16, am_pos + 60 * 16 + len(data_pattern), data_pattern)
                 continue
             data_pos += len(data_pattern)
 
@@ -253,7 +255,24 @@ class IbmFm(disk.DiskFormat):
                     print("FL TRY ADD", "%04x" % c, i - n, d[:32].hex(), ftry[:64])
 
         return 0xffff, b'', ""
-  
+
+    def correlate(self, flux, ref, start, stop, pattern):
+        l = len(pattern)
+        peak_i = []
+        peak_n = 0
+        for i in range(start, stop):
+            n = 0
+            for a, b in zip(pattern, flux[i:stop]):
+                if a == b:
+                    n += 1
+            if n > peak_n:
+                peak_n = n
+                peak_i = [i]
+            elif n == peak_n:
+                peak_i.append(i)
+        for i in peak_i:
+            print("F", "%6d" % i, "%.4f" % (peak_n / l), flux[i:i+l])
+        print("P", "%6d" % 0, "%.4f" % (0), pattern)
 
     def fm_process(self, stream, flux, am_list):
         data_pattern = '|---' * self.GAP1 + stream.make_mark(*self.DATA_MARK)

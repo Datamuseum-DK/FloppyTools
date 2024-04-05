@@ -48,7 +48,7 @@ class ZilogMCZ(disk.DiskFormat):
 
             yield disk.Sector(
                 chs,
-                data,
+                data[:-2],
             )
 
 if __name__ == "__main__":

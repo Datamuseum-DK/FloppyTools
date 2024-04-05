@@ -5,6 +5,11 @@
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 '''
 
+import time
+
+class NotInterested(Exception):
+    ''' ... '''
+
 class CHSSet():
     ''' Summarize sets of CHS values '''
 
@@ -162,9 +167,9 @@ class MediaSector():
     def status(self):
         ''' Report status and visual aid '''
         if len(self.values) == 0:
-            return False, '╳'
+            return False, '×'
         if len(self.values) <= 1:
-            return True, "╳▁▂▃▄▅▆▇█"[min(len(self.readings), 7)]
+            return True, "×▁▂▃▄▅▆▇█"[min(len(self.readings), 7)]
         if self.find_majority():
             return True, "░"
         return False, '╬'
@@ -317,11 +322,16 @@ class Media():
                     i.append(k)
                 yield ''.join(i)
 
-    def list_defects(self):
-        i = list(self.defects())
+    def list_defects(self, detailed=False):
+        i = list(self.defects(detailed))
         if len(i) > 0:
             return "Defects: " + ", ".join(i)
         return None
+
+    def iter_ch(self):
+        for cylinder in range(min(self.has_cylinders), max(self.has_cylinders) + 1):
+            for head in range(min(self.has_heads), max(self.has_heads) + 1):
+                yield(cylinder, head)
 
     def iter_chs(self):
         for cylinder in range(min(self.has_cylinders), max(self.has_cylinders) + 1):
@@ -333,9 +343,8 @@ class Media():
         ''' Produce a status/progress display '''
         i = []
         if self.format_class:
-            i.append("Format " + self.format_class.__class__.__name__)
-        i.append("Geometry " + str(self.geometry()))
-        yield "  ".join(i)
+            yield "Format " + self.format_class.__class__.__name__
+        yield "Geometry " + str(self.geometry())
         if len(self.has_cylinders) <= 85:
             yield from self.horizontal_status()
         i = self.list_defects()
@@ -357,6 +366,7 @@ class Media():
         sector_length = list(lengths)[0]
         unread = b'_UNREAD_' * (1 + (sector_length // 8))
         unread = unread[:sector_length]
+        assert len(unread) == sector_length
         with open(filename, "wb") as fo:
             for chs in self.iter_chs():
                 disk_sector = self.disk_sectors.get(chs)
@@ -368,6 +378,65 @@ class Media():
                     fo.write(unread)
                     continue
                 fo.write(data)
+
+    def write_imagedisk_file(self, filename):
+        hdr = 'IMD 1.19 ' + time.strftime('%d/%m/%Y %H:%M:%S\r\n', time.gmtime())
+        with open(filename, "wb") as fo:
+            fo.write(hdr.encode('ascii'))
+            fo.write("DataMuseum.dk/FloppyTools\r\n".encode('ascii'))
+            fo.write(b'\x1a')
+            tracks = {}
+            tracklen = {}
+            trackdata = {}
+            for chs in self.iter_chs():
+                trk = chs[:2]
+                disk_sector = self.disk_sectors.get(chs)
+                if disk_sector is None:
+                    continue
+                data = disk_sector.write_data()
+                if trk not in tracks:
+                    tracks[trk] = []
+                    tracklen[trk] = set()
+                    trackdata[trk] = []
+                tracks[trk].append(disk_sector)
+                tracklen[trk] |= disk_sector.lengths
+                trackdata[trk].append(data)
+            for trk in sorted(tracks):
+                length = tracklen[trk]
+                if len(length) != 1:
+                    print("TL", trk, length)
+                    length = [ 1024 ]
+                assert len(length) == 1
+                length = list(length)[0]
+                assert length is not None
+                sectors = tracks[trk]
+                chs = sectors[0].chs
+                trkhead = []
+                trkhead.append(0)
+                trkhead.append(chs[0])
+                trkhead.append(chs[1])
+                trkhead.append(len(sectors))
+                trkhead.append(
+                    {
+                    128: 0,
+                    256: 1,
+                    512: 2,
+                    1024: 3,
+                    2048: 4,
+                    4096: 5,
+                    8192: 6,
+                    }[length]
+                )
+                fo.write(bytes(trkhead))
+                for sec in sectors:
+                    fo.write(bytes(sec.chs[2:])) # sector number map
+                for data in trackdata[trk]:
+                    if data is None:
+                        data = b'_UNREAD_' * (length // 8)
+                    assert len(data) == length
+                    fo.write(b'\x01') # Normal sector data
+                    fo.write(data)
+ 
 
     def ddhf_meta(self, basename):
         ''' Emit DDHF bitstore metadata information '''

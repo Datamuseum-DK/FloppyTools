@@ -37,6 +37,7 @@ class KryoStream(fluxstream.FluxStream):
         self.strm = {}
         self.index = []
         self.oob = []
+        self.histo = [0] * 80
         self.stream_end = None
         self.result_code = None
         self.sck = None
@@ -57,7 +58,9 @@ class KryoStream(fluxstream.FluxStream):
     def iter_dt(self):
         last = 0
         for i in self.strm.values():
-            yield i - last
+            dt = i - last
+            self.histo[min(dt//3, 79)] += 1
+            yield dt
             last = i
 
     def do_index(self):

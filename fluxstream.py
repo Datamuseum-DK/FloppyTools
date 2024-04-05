@@ -52,6 +52,37 @@ class ClockRecovery():
 class ClockRecoveryFM(ClockRecovery):
     ''' Classic FM '''
 
+class ClockRecoveryMFM(ClockRecovery):
+
+    # Hand tuned
+    RATE = 50e-3
+
+    # Half a period on traditional 8" floppies
+    LIMIT = 12.5
+
+
+    SPEC = {
+        50: "-|",
+        75: "--|",
+        100: "---|",
+    }
+
+class ClockRecoveryM2FM(ClockRecovery):
+
+    # Hand tuned
+    RATE = 50e-3
+
+    # Half a period on traditional 8" floppies
+    LIMIT = 12.5
+
+    SPEC = {
+        50: "-|",
+        75: "--|",
+        100: "---|",
+        125: "----|",
+    }
+
+
 class FluxStream():
     ''' ... '''
 
