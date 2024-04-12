@@ -26,11 +26,11 @@ class KryoStream(fluxstream.FluxStream):
             raise NotAKryofluxStream("Does not end in ….raw")
         if not i[-2].isdigit():
             raise NotAKryofluxStream("Does not end in ….%d.raw")
-        if not i[-3][3:].isdigit():
+        if not i[-3][-2:].isdigit():
             raise NotAKryofluxStream("Does not end in …bin%d.%d.raw")
-        if i[-3][:3] != "bin":
-            raise NotAKryofluxStream("Does not end in …bin%d.%d.raw")
-        self.chs = (int(i[-3][3:]), int(i[-2]), None)
+        #if i[-3][:3] != "bin":
+        #    raise NotAKryofluxStream("Does not end in …bin%d.%d.raw")
+        self.chs = (int(i[-3][-2:]), int(i[-2]), None)
 
         self.filename = filename
         self.flux = {}

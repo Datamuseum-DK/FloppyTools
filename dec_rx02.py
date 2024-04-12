@@ -9,17 +9,9 @@ import crcmod
 
 import main
 import disk
-import fluxstream
+import fluxstream as fs
 
 crc_func = crcmod.predefined.mkCrcFun('crc-ccitt-false')
-
-class DecRx02MfmRecovery(fluxstream.ClockRecovery):
-
-    SPEC = {
-        50: "-|",
-        75: "--|",
-        100: "---|",
-    }
 
 class DecRx02(disk.DiskFormat):
 
@@ -32,7 +24,8 @@ class DecRx02(disk.DiskFormat):
     ADDRESS_MARK = (0xc7, 0xfe)
     HDDATA_MARK = (0xc7, 0xfd)
     GAP1 = 32
-    MAX_GAP2 = 250
+    DATA_WIN_LO = 550
+    DATA_WIN_HI = 800
 
     def validate_address_mark(self, address_mark):
         ''' ... '''
@@ -42,14 +35,15 @@ class DecRx02(disk.DiskFormat):
     def process(self, stream):
         ''' ...  '''
 
-        am_pattern = '|---' * self.GAP1 + stream.make_mark(*self.ADDRESS_MARK)
-        hddata_pattern = '|---' * self.GAP1 + stream.make_mark(*self.HDDATA_MARK)
+        am_pattern = '|---' * self.GAP1 + fs.make_mark_fm(*self.ADDRESS_MARK)
+        hddata_pattern = '|---' * self.GAP1 + fs.make_mark_fm(*self.HDDATA_MARK)
 
-        flux = DecRx02MfmRecovery().process(stream.iter_dt())
+        flux = stream.mfm_flux()
 
         for am_pos in stream.iter_pattern(flux, pattern=am_pattern):
 
             address_mark = stream.flux_data_fm(flux[am_pos-32:am_pos+(6*32)])
+            #print("AM", address_mark.hex(), flux[am_pos-32:am_pos+(6*32)])
             if address_mark is None:
                 continue
 
@@ -61,10 +55,12 @@ class DecRx02(disk.DiskFormat):
             if chs is None:
                 continue
 
-            data_pos = flux.find(hddata_pattern, am_pos)
+            data_pos = flux.find(
+                hddata_pattern,
+                am_pos + self.DATA_WIN_LO,
+                am_pos + self.DATA_WIN_HI
+            )
             if data_pos < 0:
-                continue
-            if data_pos > am_pos + self.MAX_GAP2 * 4:
                 continue
             data_pos += len(hddata_pattern)
 
@@ -75,14 +71,8 @@ class DecRx02(disk.DiskFormat):
             data = bytes([0xfd]) + self.flux_to_bytes(data_flux[1:])
 
             data_crc = crc_func(data)
-            if data_crc:
-                continue
-
-            yield disk.Sector(
-                chs,
-                data[1:self.SECTOR_SIZE+1],
-                source=stream.filename,
-            )
+            if not data_crc:
+                yield disk.Sector(chs, data[1:self.SECTOR_SIZE+1])
 
     def flux_to_bytes(self, flux):
         ''' RX02 uses a modified MFM encoding '''

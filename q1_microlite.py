@@ -39,9 +39,11 @@ class Q1MicroLite(disk.DiskFormat):
 
     def define_geometry(self, media):
         ''' Possibly not precise wrt. cylinder ranges '''
-        media.define_geometry((0, 0, 0), (29, 0, 18), 256)
-        media.define_geometry((30, 0, 0), (71, 0, 125), 21)
-        media.define_geometry((72, 0, 0), (79, 0, 18), 256)
+        media.define_geometry((0, 0, 0), (0, 0, 87), 40)
+        media.define_geometry((1, 0, 0), (29, 0, 18), 255)
+        media.define_geometry((30, 0, 0), (72, 0, 125), 20)
+        media.define_geometry((73, 0, 0), (73, 0, 18), 255)
+        media.define_geometry((74, 0, 0), (76, 0, 18), 512)
 
     def process(self, stream):
 
@@ -62,58 +64,35 @@ class Q1MicroLite(disk.DiskFormat):
                 continue
             data_pos += len(self.DATA_PATTERN)
 
-            data = stream.flux_data_mfm(flux[data_pos-16:data_pos+16*21])
+            if am_data[0] == 0:
+                length = 40
+            elif am_data[0] < 30:
+                length = 255
+            elif am_data[0] < 73:
+                length = 20
+            elif am_data[0] < 74:
+                length = 255
+            else:
+                length = 1024
+
+            data = stream.flux_data_mfm(flux[data_pos-16:data_pos+16*length+32])
             assert data[0] == 0x9b
 
-            if data[1] == 00:
+            dsum = sum(data[:-2]) & 0xff
+            if dsum == data[-2] and data[-1] == 0x10:
                 yield disk.Sector(
                     (am_data[0], 0, am_data[1]),
                     data,
                 )
+            elif 0:
                 print(
                     am_data.hex(),
-                    "X %02x" % data[1],
-                    data.hex(),
-                    None,
-                )
-            elif 1 <= data[1] <= 7:
-                dsum = sum(data[:-1]) & 0xff
-                if dsum == data[-1]:
-                    yield disk.Sector(
-                        (am_data[0], 0, am_data[1]),
-                        data,
-                    )
-                else:
-                    print(
-                        am_data.hex(),
-                        "Y %02x" % data[1],
-                        data[:21].hex(),
-                        totext(data),
-                        dsum == data[-1],
-                    )
-            elif 8 <= data[1] <= 15:
-                data = stream.flux_data_mfm(flux[data_pos-16:data_pos+16*256])
-                dsum = sum(data[:-1]) & 0xff
-                if dsum == data[-1]:
-                    yield disk.Sector(
-                        (am_data[0], 0, am_data[1]),
-                        data,
-                    )
-                else:
-                    print(
-                        am_data.hex(),
-                        "Z %02x" % data[1],
-                        data[:21].hex(),
-                        totext(data),
-                        dsum == data[-1],
-                    )
-            else:
-                print(
-                    am_data.hex(),
-                    "W %02x" % data[1],
-                    data[:21].hex(),
-                    totext(data),
-                    dsum == data[-1],
+                    "CSUM",
+                    "%02x" % dsum,
+                    "%02x" % data[-1],
+                    flux[data_pos-16:data_pos+16*length+64],
+                    #totext(data),
+                    #data.hex(),
                 )
 
 if __name__ == "__main__":

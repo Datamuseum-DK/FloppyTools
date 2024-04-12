@@ -24,7 +24,7 @@ class DataGeneralNova(disk.DiskFormat):
         if not self.validate_chs(stream.chs, none_ok=True):
             return
 
-        flux = fluxstream.ClockRecoveryFM().process(stream.iter_dt())
+        flux = stream.fm_flux()
 
         for am_pos in stream.iter_pattern(flux, pattern=self.GAP1):
             address_mark = stream.flux_data_fm(flux[am_pos:am_pos+2*32])

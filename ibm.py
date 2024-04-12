@@ -11,7 +11,7 @@ import crcmod
 
 import main
 import disk
-import fluxstream
+import fluxstream as fs
 
 MFM_LUT = {
     "--|--", #00
@@ -36,7 +36,8 @@ class IbmFm(disk.DiskFormat):
     #LAST_CHS = (76, 1, 26)
     #SECTOR_SIZE = 128
 
-    ADDRESS_MARK = (0xc7, 0xfe)
+    FM_ADDRESS_MARK = (0xc7, 0xfe)
+    MFM_ADDRESS_MARK = ((0x0a, 0xa1), (0x0a, 0xa1), (0x0a, 0xa1), (0x00, 0xfe))
     DATA_MARK = (0xc7, 0xfb)
     DELETE_MARK = (0xc7, 0xf8)
     GAP1 = 16
@@ -100,15 +101,14 @@ class IbmFm(disk.DiskFormat):
     def process(self, stream):
         ''' ...  '''
 
-        fm_am_pattern = '|---' * self.GAP1 + stream.make_mark(*self.ADDRESS_MARK)
+        fm_am_pattern = '|---' * self.GAP1
+        fm_am_pattern += fs.make_mark_fm(*self.FM_ADDRESS_MARK)
 
         mfm_am_pattern = '|-' * 32
-                         #  1 0 1 0 0 0 0 1 1 0 1 0 0 0 0 1   xa1a1
-        mfm_am_pattern += '-|---|--|---|--|-|---|--|---|--|'
-                         #  1 0 1 0 0 0 0 1 1 1 1 1 1 1 1 0   xa1fe
-        mfm_am_pattern += '-|---|--|---|--|-|-|-|-|-|-|-|--'
+        for i in self.MFM_ADDRESS_MARK:
+            mfm_am_pattern += fs.make_mark(*i)
 
-        flux = fluxstream.ClockRecoveryFM().process(stream.iter_dt())
+        flux = stream.fm_flux()
         am_list = list(stream.iter_pattern(flux, pattern=fm_am_pattern))
 
         if len(am_list) > 0:
@@ -116,7 +116,7 @@ class IbmFm(disk.DiskFormat):
             yield from self.fm_process(stream, flux, am_list)
             return
 
-        flux = fluxstream.ClockRecoveryMFM().process(stream.iter_dt())
+        flux = stream.mfm_flux()
 
         am_list = list(stream.iter_pattern(flux, pattern=mfm_am_pattern))
         if len(am_list) > 0:
@@ -162,11 +162,21 @@ class IbmFm(disk.DiskFormat):
                 continue
 
             data_pos = flux.find(data_pattern, am_pos + 20 * 16, am_pos + 60 * 16)
-            # self.correlate(flux, am_pos, am_pos + 20 * 16, am_pos + 60 * 16 + len(data_pattern), data_pattern)
             if data_pos < 0:
                 if self.repair:
-                    print("REPAIR: NO DATA_POS", chs, am_pos, flux[am_pos + 20 * 16:am_pos + 60 * 16])
-                    self.correlate(flux, am_pos, am_pos + 20 * 16, am_pos + 60 * 16 + len(data_pattern), data_pattern)
+                    print(
+                        "REPAIR: NO DATA_POS",
+                        chs,
+                        am_pos,
+                        flux[am_pos + 20 * 16:am_pos + 60 * 16]
+                    )
+                    self.correlate(
+                        flux,
+                        am_pos,
+                        am_pos + 20 * 16,
+                        am_pos + 60 * 16 + len(data_pattern),
+                        data_pattern
+                    )
                 continue
             data_pos += len(data_pattern)
 
@@ -260,8 +270,8 @@ class IbmFm(disk.DiskFormat):
         print("P", "%6d" % 0, "%.4f" % (0), pattern)
 
     def fm_process(self, stream, flux, am_list):
-        data_pattern = '|---' * self.GAP1 + stream.make_mark(*self.DATA_MARK)
-        delete_pattern = '|---' * self.GAP1 + stream.make_mark(*self.DELETE_MARK)
+        data_pattern = '|---' * self.GAP1 + fs.make_mark_fm(*self.DATA_MARK)
+        delete_pattern = '|---' * self.GAP1 + fs.make_mark_fm(*self.DELETE_MARK)
 
         for am_pos in am_list:
             address_mark = stream.flux_data_fm(flux[am_pos-32:am_pos+(6*32)])

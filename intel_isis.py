@@ -8,18 +8,9 @@ import crcmod
 
 import main
 import disk
-import fluxstream
+import fluxstream as fs
 
 crc_func = crcmod.predefined.mkCrcFun('xmodem')
-
-class IntelIsisRecovery(fluxstream.ClockRecovery):
-
-    SPEC = {
-        50: "-|",
-        75: "--|",
-        100: "---|",
-        125: "----|",
-    }
 
 class IntelIsis(disk.DiskFormat):
 
@@ -41,10 +32,10 @@ class IntelIsis(disk.DiskFormat):
             print("Ignoring", stream)
             return
 
-        am_pattern =   '|-' * 16 + '|--|-|-|--|-|-|-'
-        data_pattern = '|-' * 16 + '|--|-|-|--|---|-'
+        am_pattern =   '|-' * 16 + fs.make_mark(0x87, 0x70)
+        data_pattern =   '|-' * 16 + fs.make_mark(0x85, 0x70)
 
-        flux = IntelIsisRecovery().process(stream.iter_dt())
+        flux = stream.m2fm_flux()
 
         for am_pos in stream.iter_pattern(flux, pattern=am_pattern):
 

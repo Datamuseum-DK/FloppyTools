@@ -33,7 +33,7 @@ class HP9885(disk.DiskFormat):
         if not self.validate_chs(stream.chs, none_ok=True):
             raise disk.NotInterested()
 
-        flux = fluxstream.ClockRecoveryM2FM().process(stream.iter_dt())
+        flux = stream.m2fm_flux()
         prev = 0
         for am_pos in stream.iter_pattern(flux, pattern=AM):
             amf = flux[am_pos:am_pos + 80]

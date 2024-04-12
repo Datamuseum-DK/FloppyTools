@@ -33,7 +33,7 @@ class WangWcs(disk.DiskFormat):
             print("Ignoring", stream)
             return
 
-        flux = fluxstream.ClockRecoveryFM().process(stream.iter_dt())
+        flux = stream.fm_flux()
 
         for am_pos in stream.iter_pattern(flux, pattern=AM_MARK):
 

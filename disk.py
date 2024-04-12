@@ -107,6 +107,8 @@ class Sector():
         self.chs = chs
         self.octets = octets
         self.good = good
+        if source is not None:
+            source = str(source)
         self.source = source
         self.extra = extra
 
@@ -117,6 +119,7 @@ class Sector():
         return self.octets == other.octets and self.good == other.good
 
     def cache_record(self):
+        ''' return fields for cache file records '''
         return [
             "%d,%d,%d" % self.chs,
             self.octets.hex(),
@@ -141,6 +144,7 @@ class MediaSector():
 
     def add_sector(self, read_sector):
         ''' Add a reading of this sector '''
+
         assert read_sector.chs == self.chs
         assert read_sector.good
         self.readings.append(read_sector)
@@ -166,6 +170,7 @@ class MediaSector():
 
     def status(self):
         ''' Report status and visual aid '''
+
         if len(self.values) == 0:
             return False, '×'
         if len(self.values) <= 1:
@@ -176,6 +181,7 @@ class MediaSector():
 
     def write_data(self):
         ''' Return data to be written '''
+
         if len(self.values) == 0:
             return None
         if len(self.values) == 1:
@@ -202,6 +208,7 @@ class Media():
 
     def define_geometry(self, first_chs, last_chs, sector_size = None):
         ''' Define (part) of the geometry '''
+
         assert len(first_chs) == 3
         assert len(last_chs) == 3
         for cyl in range(first_chs[0], last_chs[0]+1):
@@ -220,6 +227,7 @@ class Media():
 
     def add_sector(self, read_sector):
         ''' Add a reading of a sector '''
+
         self.last_addition = read_sector.chs
         disksector = self.disk_sectors.get(read_sector.chs)
         if disksector is None:
@@ -232,6 +240,7 @@ class Media():
 
     def sector_lengths(self):
         ''' return the sector lengths encountered '''
+
         lengths = set()
         for disk_sector in self.disk_sectors.values():
             lengths |= disk_sector.lengths
@@ -322,6 +331,35 @@ class Media():
                     i.append(k)
                 yield ''.join(i)
 
+    def vertical_status(self):
+        for head in sorted(self.has_heads):
+            if len(self.has_heads) > 1:
+                yield "head=%d" % head
+
+            l1 = []
+            for cylinder in sorted(self.has_cylinders):
+                if cylinder == self.last_addition[0] and head == self.last_addition[1]:
+                    l1.append('↓')
+                elif cylinder % 10 == 0:
+                    l1.append('%d' % (cylinder // 10))
+                elif cylinder % 10 == 5:
+                    l1.append(':')
+                else:
+                    l1.append('.')
+            yield ''.join(l1)
+
+            for cylinder in sorted(self.has_cylinders):
+                i = []
+                for sector in sorted(self.has_sectors):
+                    chs = (cylinder, head, sector)
+                    disk_sector = self.disk_sectors.get(chs)
+                    if disk_sector is None:
+                        i.append(' ')
+                        continue
+                    _j, k = disk_sector.status()
+                    i.append(k)
+                yield ''.join(i)
+
     def list_defects(self, detailed=False):
         i = list(self.defects(detailed))
         if len(i) > 0:
@@ -345,8 +383,10 @@ class Media():
         if self.format_class:
             yield "Format " + self.format_class.__class__.__name__
         yield "Geometry " + str(self.geometry())
-        if len(self.has_cylinders) <= 85:
+        if len(self.has_cylinders) > len(self.has_sectors):
             yield from self.horizontal_status()
+        else:
+            yield from self.vertical_status()
         i = self.list_defects()
         if not i:
             yield "Complete"

@@ -29,7 +29,7 @@ class ZilogMCZ(disk.DiskFormat):
             print("Ignoring", stream)
             return
 
-        flux = fluxstream.ClockRecoveryFM().process(stream.iter_dt())
+        flux = stream.fm_flux()
 
         for data_pos in stream.iter_pattern(flux, pattern=self.GAP):
             data_pos -= 4
