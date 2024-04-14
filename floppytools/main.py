@@ -11,9 +11,9 @@ import glob
 import math
 import time
 
-import disk
-import fluxstream
-import kryostream
+from . import disk
+from . import fluxstream
+from . import kryostream
 
 # Dont touch files if mtime is newer than this
 COOLDOWN = 2
@@ -141,39 +141,43 @@ class MediaDir(disk.Media):
         #    for line in media.ddhf_meta(medianame):
         #        file.write(line + "\n")
 
+    def read_cache_format(self, flds):
+        ''' A format line from the cache file '''
+        for cls in self.format_classes:
+            if cls.__name__ != flds[1]:
+                continue
+            fmt = cls()
+            fmt.media = self
+            self.format_class = fmt
+        if self.format_class is None:
+            print("Unknown Format", line)
+            exit(2)
+
     def read_cache(self):
         try:
             with open(self.file_name(), "r", encoding="utf8") as file:
                 print("# read cache", self.file_name())
                 for line in file:
-                    line = line.split()
-                    if line[0] == "format":
-                        for cls in self.format_classes:
-                            if cls.__name__ != line[1]:
-                                continue
-                            fmt = cls()
-                            fmt.media = self
-                            fmt.define_geometry()
-                            self.format_class = fmt
-                        if self.format_class is None:
-                            print("Unknown Format", line)
-                            exit(2)
-                    elif line[0] == "file":
-                        self.files_done.add(line[1])
-                    elif line[0] == "sector":
-                        chs = tuple(int(x) for x in line[2].split(","))
-                        octets = bytes.fromhex(line[3])
-                        if len(line) > 4:
-                            extra = line[4]
+                    flds = line.split()
+                    if flds[0] == "format":
+                        self.read_cache_format(flds)
+                    elif flds[0] == "file":
+                        self.files_done.add(flds[1])
+                    elif flds[0] == "sector":
+                        chs = tuple(int(x) for x in flds[2].split(","))
+                        octets = bytes.fromhex(flds[3])
+                        if len(flds) > 4:
+                            extra = flds[4]
                         else:
                             extra = ""
                         self.format_class.cached_sector(
-                            disk.Sector(chs, octets, source=line[1], extra=extra)
+                            disk.Sector(chs, octets, source=flds[1], extra=extra)
                         )
                     else:
                         print("Invalid cache line")
                         print("   ", line)
                         exit(2)
+            self.format_class.cache_was_read()
         except FileNotFoundError:
             pass
 

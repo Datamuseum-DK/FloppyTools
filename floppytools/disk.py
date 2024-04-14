@@ -72,8 +72,14 @@ class DiskFormat():
 
     media = None
 
+    def cache_was_read(self):
+        ''' Do housekeeping after cache was read '''
+
+        self.define_geometry()
+
     def define_geometry(self):
         ''' Propagate geometry (if any) to media '''
+
         if self.FIRST_CHS and self.LAST_CHS:
             self.media.define_geometry(
                 self.FIRST_CHS,
@@ -101,7 +107,7 @@ class DiskFormat():
 class Sector():
     ''' A single sector, read by a Reading '''
 
-    def __init__(self, chs, octets, good=True, source=None, extra=""):
+    def __init__(self, chs, octets, good=True, source="...", extra=""):
         assert len(chs) == 3
         self.chs = chs
         self.octets = octets
@@ -487,6 +493,18 @@ class Media():
                     assert len(data) == length
                     fo.write(b'\x01') # Normal sector data
                     fo.write(data)
+
+    def stream_files_for(self, chs):
+        ''' Iterate potential stream files for specific sector '''
+
+        seen = set()
+        for ds in self.disk_sectors.values():
+            if ds.chs[0] != chs[0] or ds.chs[1] != chs[1]:
+                 continue
+            for rs in ds.readings:
+                if rs.source not in seen:
+                    yield rs.source
+                    seen.add(rs.source)
 
     def ddhf_meta(self, basename):
         ''' Emit DDHF bitstore metadata information '''

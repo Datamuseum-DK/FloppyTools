@@ -35,9 +35,9 @@ import struct
 
 from collections import Counter
 
-import main
-import disk
-import fluxstream
+from . import main
+from . import disk
+from . import fluxstream
 
 def most_common(lst):
     ''' Return most common element '''
@@ -66,6 +66,21 @@ class Q1MicroLite(disk.DiskFormat):
         super().__init__(*args, **kwargs)
         self.cyl_sect_len = {}
 
+    def cache_was_read(self):
+        ''' Do housekeeping after cache was read '''
+
+        seen = set()
+        for ds in list(self.media.disk_sectors.values()):
+            if ds.chs[0]:
+                continue
+            if ds.chs in seen:
+                continue
+            data = ds.find_majority()
+            if data is None:
+                continue
+            seen.add(ds.chs)
+            self.catalog(ds.chs, data)
+
     def catalog(self, chs, data):
         ''' Process a catalog sector from track zero '''
 
@@ -78,7 +93,7 @@ class Q1MicroLite(disk.DiskFormat):
         nsect = flds[4]
         count = flds[2]
         length = flds[3]
-        print("CAT", hex(flds[0]), flds[1], hex(first), hex(last), hex(nsect), hex(count), hex(length))
+        # print("CAT", flds)
         last = max(last, 80)
         for cyl in range(first, last +1):
             self.cyl_sect_len[cyl] = length
@@ -96,15 +111,6 @@ class Q1MicroLite(disk.DiskFormat):
             return 40
         return self.cyl_sect_len.get(chs[0], None)
 
-    def split_stream(self, stream):
-        ''' Two level split of stream at AM and then Data '''
-        # Done this way to aid manual recoveries
-
-        flux = ClockRecovery().process(stream.iter_dt())
-
-        for i in flux.split(self.AM_PATTERN)[1:]:
-            yield i.split(self.DATA_PATTERN)
-
     def propose_sector(self, chs, sector_length, data):
         ''' Proposed sector '''
 
@@ -119,27 +125,52 @@ class Q1MicroLite(disk.DiskFormat):
         #print("G", chs, sector_length, data[:sector_length].hex())
         yield disk.Sector(chs, data[:sector_length])
 
+    def split_stream(self, stream):
+        ''' Two level split of stream at AM and then Data '''
+        # Done this way to aid manual recoveries
+
+        flux = ClockRecovery().process(stream.iter_dt())
+
+        for i in flux.split(self.AM_PATTERN)[1:]:
+            j = i.split(self.DATA_PATTERN)
+            # There must be a data part
+            if len(j) < 2:
+                continue
+            # Close to the address mark
+            if len(j[0]) > 10*16:
+                continue
+            yield j
+
+    def am_to_chs(self, stream, flux):
+        am_data = stream.flux_data_mfm(flux[:4*16])
+        if len(am_data) != 4:
+            return None
+        if am_data[3] != 0x10:
+            return None
+        if (am_data[0] + am_data[1]) & 0xff != am_data[2]:
+            return None
+        return (am_data[0], 0, am_data[1])
+
+    def flux_for_sector(self, chs, stream):
+        ''' Return (candidate) flux for specific sector '''
+        for fluxparts in self.split_stream(stream):
+            i = self.am_to_chs(stream, fluxparts[0])
+            if i is None:
+                continue
+            if i[0] != chs[0]:
+                return
+            if i != chs:
+                continue
+            yield fluxparts[1]
+
     def process(self, stream):
         ''' process a stream '''
 
         later = []
         for i in self.split_stream(stream):
-
-            # There must have been a data mark
-            if len(i) < 2:
+            chs = self.am_to_chs(stream, i[0])
+            if chs is None:
                 continue
-
-            # …right after the address mark
-            if len(i[0]) > 10*16:
-                continue
-
-            am_data = stream.flux_data_mfm(i[0][:4*16])
-            if am_data[3] != 0x10:
-                continue
-            if (am_data[0] + am_data[1]) & 0xff != am_data[2]:
-                continue
-
-            chs = (am_data[0], 0, am_data[1])
 
             sector_length = self.sector_length(chs)
 

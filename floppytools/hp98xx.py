@@ -7,10 +7,10 @@
 
 import crcmod
 
-import main
-import disk
-import fluxstream
-import rev_bits
+from . import main
+from . import disk
+from . import fluxstream
+from . import rev_bits
 
 crc_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
 

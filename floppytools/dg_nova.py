@@ -5,8 +5,8 @@
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 '''
 
-import main
-import disk
+from . import main
+from . import disk
 
 class DataGeneralNova(disk.DiskFormat):
 

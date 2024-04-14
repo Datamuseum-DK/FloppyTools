@@ -9,9 +9,9 @@ import sys
 
 import crcmod
 
-import main
-import disk
-import fluxstream as fs
+from . import main
+from . import disk
+from . import fluxstream as fs
 
 MFM_LUT = {
     "--|--", #00

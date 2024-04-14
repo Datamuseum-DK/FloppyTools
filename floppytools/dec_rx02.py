@@ -7,9 +7,9 @@
 
 import crcmod
 
-import main
-import disk
-import fluxstream as fs
+from . import main
+from . import disk
+from . import fluxstream as fs
 
 crc_func = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 

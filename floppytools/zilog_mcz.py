@@ -9,9 +9,9 @@
 
 import crcmod
 
-import main
-import disk
-import fluxstream
+from . import main
+from . import disk
+from . import fluxstream
 
 crc_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
 
