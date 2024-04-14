@@ -12,6 +12,7 @@ import math
 import time
 
 import disk
+import fluxstream
 import kryostream
 
 # Dont touch files if mtime is newer than this
@@ -36,16 +37,16 @@ def histo(data):
             t.append(' ▁▂▃▄▅▆▇█'[r])
         yield "".join(t)
 
-class MediaDir():
+class MediaDir(disk.Media):
     ''' A Directory representing a Media '''
 
     def __init__(self, dirname, medianame, formats=None, load_cache=True, save_cache=True):
+        super().__init__()
         if formats is None:
             formats = []
         self.dirname = dirname
         os.makedirs(self.dirname, exist_ok=True)
         self.medianame = medianame
-        self.media = disk.Media()
         self.files_done = set()
         self.cache_file = None
         self.format_classes = formats
@@ -53,12 +54,15 @@ class MediaDir():
         if load_cache:
             self.read_cache()
         if save_cache:
-            self.cache_file = open(self.cache_file_name(), "a", encoding="utf8")
+            self.cache_file = open(self.file_name(), "a", encoding="utf8")
         self.histo = []
+
+    def file_name(self, ext="ft_cache"):
+        return os.path.join(self.dirname, self.medianame + "." + ext)
 
     def add_sector(self, read_sector):
         ''' Add a reading of a sector '''
-        self.media.add_sector(read_sector)
+        super().add_sector(read_sector)
         if self.cache_file:
             self.cache_file.write(" ".join(
                     [
@@ -68,18 +72,20 @@ class MediaDir():
                 ) + "\n"
             )
 
-    def process_file(self, streamfilename, force=False):
+    def process_file(self, streamfilename):
         ''' Infer the media format by asking all classes '''
 
         rel_filename = os.path.relpath(streamfilename, self.dirname)
-        if rel_filename in self.files_done and not force:
-            # print("##", streamfilename, "(already in cache)")
+        if rel_filename in self.files_done:
             return False
         print("Doing", streamfilename)
-        stream = kryostream.KryoStream(streamfilename)
-        if self.media.format_class:
+        try:
+            stream = kryostream.KryoStream(streamfilename)
+        except kryostream.NotAKryofluxStream:
+            stream = fluxstream.RawStream(streamfilename)
+        if self.format_class:
             try:
-                for read_sector in self.media.format_class.process(stream):
+                for read_sector in self.format_class.process(stream):
                     read_sector.source = rel_filename
                     self.add_sector(read_sector)
                 if self.cache_file:
@@ -89,14 +95,15 @@ class MediaDir():
         else:
             for cls in self.format_classes:
                 fmt = cls()
-                fmt.media = self.media
+                fmt.media = self
                 try:
                     read_sectors = list(fmt.process(stream))
                 except disk.NotInterested:
                     continue
                 if len(read_sectors) == 0:
                     continue
-                fmt.define_geometry(self.media)
+                fmt.media = self
+                fmt.define_geometry()
                 if self.cache_file:
                     self.cache_file.write(
                         "format " + fmt.__class__.__name__ + "\n"
@@ -106,8 +113,7 @@ class MediaDir():
                     self.add_sector(read_sector)
                 if self.cache_file:
                     self.cache_file.flush()
-                self.media.format_class = fmt
-                fmt.media = self.media
+                self.format_class = fmt
         self.histo = stream.histo
         self.files_done.add(rel_filename)
         if self.cache_file:
@@ -117,32 +123,28 @@ class MediaDir():
 
     def status(self, detailed=False):
         yield "Directory " + self.dirname
-        yield from self.media.status(detailed)
+        yield from super().status(detailed)
 
     def write_result(self):
         ''' Write result and status files '''
 
         i = os.path.join(self.dirname, self.medianame + ".bin")
-        self.media.write_bin_file(i)
-        #media.media.write_imagedisk_file(dstname + ".imd")
-        i = os.path.join(self.dirname, self.medianame + ".status")
-        with open(i, "w", encoding="utf8") as file:
+        self.write_bin_file(i)
+        #media.write_imagedisk_file(dstname + ".imd")
+        with open(self.file_name("status"), "w", encoding="utf8") as file:
             for line in self.status():
                 file.write(line + "\n")
             file.write("Detailed defects:\n")
-            for defect in self.media.defects(True):
+            for defect in self.defects(True):
                 file.write("  " + defect + "\n")
         #with open(dstname + ".meta", "w", encoding="utf8") as file:
         #    for line in media.ddhf_meta(medianame):
         #        file.write(line + "\n")
 
-    def cache_file_name(self):
-        return os.path.join(self.dirname, self.medianame + ".ft_cache")
-
     def read_cache(self):
         try:
-            with open(self.cache_file_name(), "r", encoding="utf8") as file:
-                print("# read cache", self.cache_file_name())
+            with open(self.file_name(), "r", encoding="utf8") as file:
+                print("# read cache", self.file_name())
                 for line in file:
                     line = line.split()
                     if line[0] == "format":
@@ -150,10 +152,10 @@ class MediaDir():
                             if cls.__name__ != line[1]:
                                 continue
                             fmt = cls()
-                            fmt.define_geometry(self.media)
-                            self.media.format_class = fmt
-                            fmt.media = self.media
-                        if self.media.format_class is None:
+                            fmt.media = self
+                            fmt.define_geometry()
+                            self.format_class = fmt
+                        if self.format_class is None:
                             print("Unknown Format", line)
                             exit(2)
                     elif line[0] == "file":
@@ -165,7 +167,7 @@ class MediaDir():
                             extra = line[4]
                         else:
                             extra = ""
-                        self.media.format_class.cached_sector(
+                        self.format_class.cached_sector(
                             disk.Sector(chs, octets, source=line[1], extra=extra)
                         )
                     else:
@@ -199,6 +201,8 @@ class Main():
             self.dir_mode()
         elif len(sys.argv) in (2, 3) and sys.argv[1] == '-m':
             self.monitor_mode()
+        elif len(sys.argv) in (2, 3) and sys.argv[1] == '-r':
+            self.repair_mode()
         else:
             self.usage()
 
@@ -218,7 +222,7 @@ class Main():
         if self.mdir and self.mdir.medianame == medianame:
             return
         if self.mdir:
-            self.defects[self.mdir.medianame] = self.mdir.media.list_defects()
+            self.defects[self.mdir.medianame] = self.mdir.list_defects()
             sys.stdout.write(self.esc_home)
             for i in self.mdir.status():
                 print(i + self.esc_eol)
@@ -228,12 +232,12 @@ class Main():
         if dirname is not None:
             self.mdir = MediaDir(dirname, medianame, formats=self.format_classes)
 
-    def process_file(self, filename, force=False):
+    def process_file(self, filename):
         ''' Process one track file '''
 
         if filename in self.files_done:
             return
-        if self.mdir.process_file(filename, force=force):
+        if self.mdir.process_file(filename):
             sys.stdout.write(self.esc_home)
             for line in self.mdir.status():
                 print(line + self.esc_eol)
@@ -251,15 +255,16 @@ class Main():
         sys.argv.pop(0)
         sys.argv.pop(0)
         dirname = sys.argv.pop(0)
-        medianame = os.path.split(dirname)[1]
-        if medianame == ".":
-            medianame = "XXX"
-
-        if sys.argv and sys.argv[0] == '-r':
-            repair = True
-            sys.argv.pop(0)
+        medianame = os.path.split(dirname)
+        if medianame[1] == "":
+            print("MN", medianame)
+            medianame = os.path.split(medianame[0])
+        if medianame[1] == "":
+            medianame = medianame[0]
         else:
-            repair = False
+            medianame = medianame[1]
+        if medianame in ("", ".", "..",):
+            medianame = "XXX"
 
         if len(sys.argv) == 0:
             sys.argv = list(
@@ -274,19 +279,47 @@ class Main():
 
         self.set_media(dirname, medianame)
 
-        if repair:
-            for disk_sector in self.mdir.media.iter_sectors():
-                i, _j = disk_sector.status()
-                if not i:
-                    self.mdir.media.format_class.repair.add(disk_sector.chs)
-            #print("Trying to repair:", self.mdir.media.format_class.repair)
-            print("Trying to repair")
+        if len(sys.argv) == 0:
+            sys.argv = list(sorted(glob.glob(dirname + "/*/*.raw")))
+        sys.stdout.write(self.esc_home + self.esc_eos)
+        for filename in sys.argv:
+            self.process_file(filename)
+        for line in self.mdir.status(detailed=True):
+            print(line + self.esc_eol)
+        sys.stdout.write(self.esc_eos+"\n")
+        sys.stdout.flush()
+        self.mdir.write_result()
+
+    def repair_mode(self):
+        ''' Attempt repair of missing sectors '''
+
+        print("REPAIR MODE", sys.argv)
+        assert len(sys.argv) >= 3
+        sys.argv.pop(0)
+        sys.argv.pop(0)
+        dirname = sys.argv.pop(0)
+        medianame = os.path.split(dirname)[1]
+        if medianame == ".":
+            medianame = "XXX"
+
+        if len(sys.argv) == 0:
+            sys.argv = list(
+                sorted(
+                    glob.glob(os.path.join(dirname, "*", "*.raw"))
+                )
+            )
+
+        if len(sys.argv) == 0:
+            print("Nothing to do ?")
+            exit(2)
+
+        self.set_media(dirname, medianame)
 
         if len(sys.argv) == 0:
             sys.argv = list(sorted(glob.glob(dirname + "/*/*.raw")))
         sys.stdout.write(self.esc_home + self.esc_eos)
         for filename in sys.argv:
-            self.process_file(filename, force=repair)
+            self.process_file(filename)
         for line in self.mdir.status(detailed=True):
             print(line + self.esc_eol)
         sys.stdout.write(self.esc_eos+"\n")

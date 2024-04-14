@@ -155,3 +155,28 @@ class FluxStream():
     def iter_dt(self):
         if False:
             yield None
+
+class RawStream(FluxStream):
+    ''' Raw stream file '''
+
+    # As found in https://github.com/MattisLind/q1decode/tree/main/Q1DISKS
+    # (CatWeasel ?)
+
+    def __init__(self, filename):
+        self.chs = (None, None, None)
+
+        self.filename = filename
+        self.histo = [0] * 80
+
+    def __str__(self):
+        return "<RawStream " + self.filename + ">"
+
+    def __lt__(self, other):
+        return self.filename < other.filename
+
+    def iter_dt(self):
+        for i in open(self.filename, "rb").read():
+            i &= 0x7f
+            dt = int(i * 2.5)
+            self.histo[min(dt//3, 79)] += 1
+            yield dt

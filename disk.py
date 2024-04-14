@@ -71,12 +71,11 @@ class DiskFormat():
     SECTOR_SIZE = None
 
     media = None
-    repair = set()
 
-    def define_geometry(self, media):
+    def define_geometry(self):
         ''' Propagate geometry (if any) to media '''
         if self.FIRST_CHS and self.LAST_CHS:
-            media.define_geometry(
+            self.media.define_geometry(
                 self.FIRST_CHS,
                 self.LAST_CHS,
                 self.SECTOR_SIZE
@@ -130,10 +129,11 @@ class MediaSector():
 
     ''' A sector on the disk image (keeps track of readings) '''
 
-    def __init__(self, chs):
+    def __init__(self, chs, sector_size=None):
         self.chs = chs
         self.readings = []
         self.values = {}
+        self.sector_size = sector_size
         self.lengths = set()
 
     def __len__(self):
@@ -158,14 +158,17 @@ class MediaSector():
     def find_majority(self):
         chosen = None
         majority = 0
+        count = 0
         for i, j in self.values.items():
+            if self.sector_size and len(i) != self.sector_size:
+                continue
+            count += 1
             if len(j) > majority:
                 majority = len(j)
                 chosen = i
-        minority = len(self.readings) - majority
+        minority = count - majority
         if majority > 2 * minority:
             return chosen
-        # print(self.chs, "majority", majority, "minority", minority, "candidates", len(self.values))
         return None
 
     def status(self):
@@ -173,11 +176,17 @@ class MediaSector():
 
         if len(self.values) == 0:
             return False, '×'
-        if len(self.values) <= 1:
-            return True, "×▁▂▃▄▅▆▇█"[min(len(self.readings), 7)]
-        if self.find_majority():
+        if len(self.values) > 1 and self.find_majority():
             return True, "░"
-        return False, '╬'
+        if len(self.values) > 1:
+            return False, '╬'
+        if self.sector_size:
+            k = list(self.values.keys())[0]
+            if len(k) > self.sector_size:
+                return False, '>'
+            if len(k) < self.sector_size:
+                return False, '<'
+        return True, "×▁▂▃▄▅▆▇█"[min(len(self.readings), 7)]
 
     def write_data(self):
         ''' Return data to be written '''
@@ -203,6 +212,9 @@ class Media():
     def __str__(self):
         return "{MEDIA " + self.geometry() + "}"
 
+    def __getitem__(self, idx):
+        return self.disk_sectors.__getitem__(idx)
+
     def iter_sectors(self):
         yield from sorted(self.disk_sectors.values())
 
@@ -215,15 +227,20 @@ class Media():
             for head in range(first_chs[1], last_chs[1]+1):
                 for sector in range(first_chs[2], last_chs[2]+1):
                     chs = (cyl, head, sector)
-                    self.define_sector(chs)
+                    self.define_sector(chs, sector_size)
         self.defined_geometry = True
 
-    def define_sector(self, chs):
-        if chs not in self.disk_sectors:
+    def define_sector(self, chs, sector_size=None):
+        sector = self.disk_sectors.get(chs)
+        if sector is None:
             self.has_cylinders.add(chs[0])
             self.has_heads.add(chs[1])
             self.has_sectors.add(chs[2])
-            self.disk_sectors[chs] = MediaSector(chs)
+            sector = MediaSector(chs)
+            self.disk_sectors[chs] = sector
+        if sector_size != None:
+            sector.sector_size = sector_size
+        return sector
 
     def add_sector(self, read_sector):
         ''' Add a reading of a sector '''
@@ -302,13 +319,16 @@ class Media():
         if not self.defined_geometry:
             yield "(possibly more: no defined geometry)"
 
+    def iter_cylinders(self):
+        yield from range(min(self.has_cylinders), max(self.has_cylinders)+1)
+
     def horizontal_status(self):
         for head in sorted(self.has_heads):
             if len(self.has_heads) > 1:
                 yield "head=%d" % head
 
             l1 = []
-            for cylinder in sorted(self.has_cylinders):
+            for cylinder in self.iter_cylinders():
                 if cylinder == self.last_addition[0] and head == self.last_addition[1]:
                     l1.append('↓')
                 elif cylinder % 10 == 0:
@@ -321,7 +341,7 @@ class Media():
 
             for sector in sorted(self.has_sectors):
                 i = []
-                for cylinder in sorted(self.has_cylinders):
+                for cylinder in self.iter_cylinders():
                     chs = (cylinder, head, sector)
                     disk_sector = self.disk_sectors.get(chs)
                     if disk_sector is None:
@@ -336,19 +356,7 @@ class Media():
             if len(self.has_heads) > 1:
                 yield "head=%d" % head
 
-            l1 = []
-            for cylinder in sorted(self.has_cylinders):
-                if cylinder == self.last_addition[0] and head == self.last_addition[1]:
-                    l1.append('↓')
-                elif cylinder % 10 == 0:
-                    l1.append('%d' % (cylinder // 10))
-                elif cylinder % 10 == 5:
-                    l1.append(':')
-                else:
-                    l1.append('.')
-            yield ''.join(l1)
-
-            for cylinder in sorted(self.has_cylinders):
+            for cylinder in self.iter_cylinders():
                 i = []
                 for sector in sorted(self.has_sectors):
                     chs = (cylinder, head, sector)
@@ -358,7 +366,10 @@ class Media():
                         continue
                     _j, k = disk_sector.status()
                     i.append(k)
-                yield ''.join(i)
+                lead = "%2d " % cylinder
+                if cylinder == self.last_addition[0] and head == self.last_addition[1]:
+                    lead = "→  "
+                yield lead + ''.join(i)
 
     def list_defects(self, detailed=False):
         i = list(self.defects(detailed))
@@ -367,12 +378,12 @@ class Media():
         return None
 
     def iter_ch(self):
-        for cylinder in range(min(self.has_cylinders), max(self.has_cylinders) + 1):
+        for cylinder in self.iter_cylinders():
             for head in range(min(self.has_heads), max(self.has_heads) + 1):
                 yield(cylinder, head)
 
     def iter_chs(self):
-        for cylinder in range(min(self.has_cylinders), max(self.has_cylinders) + 1):
+        for cylinder in self.iter_cylinders():
             for head in range(min(self.has_heads), max(self.has_heads) + 1):
                 for sector in range(min(self.has_sectors), max(self.has_sectors) + 1):
                     yield(cylinder, head, sector)
@@ -383,7 +394,7 @@ class Media():
         if self.format_class:
             yield "Format " + self.format_class.__class__.__name__
         yield "Geometry " + str(self.geometry())
-        if len(self.has_cylinders) > len(self.has_sectors):
+        if len(self.has_sectors) < 70:
             yield from self.horizontal_status()
         else:
             yield from self.vertical_status()

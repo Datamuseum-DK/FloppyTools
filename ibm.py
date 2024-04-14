@@ -140,15 +140,15 @@ class IbmFm(disk.DiskFormat):
 
             am_crc = crc_func(address_mark)
 
-            if self.repair and am_crc:
-                am_crc, address_mark, how = self.mfm_fix(
-                    stream,
-                    flux[am_pos-16:am_pos+(6*16)+6],
-                    7*16,
-                    b'\xa1\xa1\xa1',
-                )
-                if am_crc == 0:
-                    extra.append(how)
+            #if 0 and self.repair and am_crc:
+            #    am_crc, address_mark, how = self.mfm_fix(
+            #        stream,
+            #        flux[am_pos-16:am_pos+(6*16)+6],
+            #        7*16,
+            #        b'\xa1\xa1\xa1',
+            #    )
+            #    if am_crc == 0:
+            #        extra.append(how)
 
             if am_crc:
                 continue
@@ -158,25 +158,25 @@ class IbmFm(disk.DiskFormat):
                 #print("CHS", address_mark.hex())
                 continue
 
-            if self.repair and chs not in self.repair:
-                continue
+            #if self.repair and chs not in self.repair:
+            #    continue
 
             data_pos = flux.find(data_pattern, am_pos + 20 * 16, am_pos + 60 * 16)
             if data_pos < 0:
-                if self.repair:
-                    print(
-                        "REPAIR: NO DATA_POS",
-                        chs,
-                        am_pos,
-                        flux[am_pos + 20 * 16:am_pos + 60 * 16]
-                    )
-                    self.correlate(
-                        flux,
-                        am_pos,
-                        am_pos + 20 * 16,
-                        am_pos + 60 * 16 + len(data_pattern),
-                        data_pattern
-                    )
+                #if self.repair:
+                #    print(
+                #        "REPAIR: NO DATA_POS",
+                #        chs,
+                #        am_pos,
+                #        flux[am_pos + 20 * 16:am_pos + 60 * 16]
+                #    )
+                #    self.correlate(
+                #        flux,
+                #        am_pos,
+                #        am_pos + 20 * 16,
+                #        am_pos + 60 * 16 + len(data_pattern),
+                #        data_pattern
+                #    )
                 continue
             data_pos += len(data_pattern)
 
@@ -186,21 +186,21 @@ class IbmFm(disk.DiskFormat):
             width = (6 + sector_size) * 16
             data = stream.flux_data_mfm(flux[data_pos+off:data_pos+width+off])
             if data is None:
-                if self.repair:
-                    print("REPAIR: NO DATA", chs, am_pos, data_pos, data_pos - am_pos)
+                #if self.repair:
+                #    print("REPAIR: NO DATA", chs, am_pos, data_pos, data_pos - am_pos)
                 continue
 
             data_crc = crc_func(data)
 
-            if data_crc and self.repair:
-                data_crc, data, how = self.mfm_fix(
-                    stream,
-                    flux[data_pos+16:data_pos+width+off+6],
-                    (3 + sector_size) * 16,
-                    b'\xa1\xa1\xa1',
-                )
-                if data_crc == 0:
-                    extra.append(how)
+            #if data_crc and self.repair:
+            #    data_crc, data, how = self.mfm_fix(
+            #        stream,
+            #        flux[data_pos+16:data_pos+width+off+6],
+            #        (3 + sector_size) * 16,
+            #        b'\xa1\xa1\xa1',
+            #    )
+            #    if data_crc == 0:
+            #        extra.append(how)
 
             if data_crc:
                 #print("DCRC", "%04x" % data_crc, data[:16].hex(), data[-16:].hex())

@@ -7,7 +7,6 @@
 
 import main
 import disk
-import fluxstream
 
 class DataGeneralNova(disk.DiskFormat):
 
