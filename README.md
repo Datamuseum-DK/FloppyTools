@@ -17,7 +17,7 @@ person behind the keyboard.
 
 We have made an example of this available in:
 
-	https://github.com/Datamuseum-DK/FloppyToolsExamples
+https://github.com/Datamuseum-DK/FloppyToolsExamples
 
 FloppyTools will at all times be a work-in-progress, but I hope
 somebody will find it useful, and I would be very happy to see
