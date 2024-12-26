@@ -167,13 +167,14 @@ class MediaAbc():
         if ms is None:
             ms = MediaSector(chs, sector_length)
             self.sectors[chs] = ms
-        if ms.sector_length is None:
-            ms.sector_length = sector_length
-        if sector_length is not None:
-            assert ms.sector_length == sector_length
         if not ms.has_flag("defined"):
+            ms.sector_length = sector_length
             ms.set_flag("defined")
             self.n_expected += 1
+        elif ms.sector_length is None:
+            ms.sector_length = sector_length
+        else:
+            assert ms.sector_length == sector_length
         self.cyl_no.add(chs[0])
         self.hd_no.add(chs[1])
         self.sec_no.add(chs[2])
