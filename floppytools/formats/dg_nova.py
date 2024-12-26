@@ -5,36 +5,33 @@
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 '''
 
-from . import main
-from . import disk
+from ..base import media
 
-class DataGeneralNova(disk.DiskFormat):
+class DataGeneralNova(media.Media):
 
     ''' Data General Nova 8" floppy disks '''
 
-    FIRST_CHS = (0, 0, 0)
-    LAST_CHS = (76, 0, 7)
     SECTOR_SIZE = 512
+    GEOMETRY = ((0, 0, 0), (76, 0, 7), SECTOR_SIZE)
 
     GAP1 = '|---' * 16 + '|-|-'
     GAP2 = '|---' * 2 + '|-|-'
 
-    def process(self, stream):
-        if not self.validate_chs(stream.chs, none_ok=True):
-            return
+    def process_stream(self, stream):
+        schs = (stream.chs[0], stream.chs[1], 0)
+        if not self.defined_chs(schs):
+            return None
 
         flux = stream.fm_flux()
 
+        retval = False
         for am_pos in stream.iter_pattern(flux, pattern=self.GAP1):
             address_mark = stream.flux_data_fm(flux[am_pos:am_pos+2*32])
             if address_mark is None:
                 continue
 
-            chs = self.validate_chs(
-                (address_mark[0], 0, address_mark[1]>>2),
-                stream=stream,
-            )
-            if not chs:
+            chs = (address_mark[0], 0, address_mark[1]>>2)
+            if not self.defined_chs(chs):
                 continue
 
             data_pos = flux.find(self.GAP2, am_pos + 5*32)
@@ -46,17 +43,15 @@ class DataGeneralNova(disk.DiskFormat):
             if data is None or len(data) < self.SECTOR_SIZE+2:
                 continue
 
-
             data_crc = self.bogo_crc(data[:self.SECTOR_SIZE])
             disc_crc = (data[self.SECTOR_SIZE]<<8) | data[self.SECTOR_SIZE + 1]
             if data_crc != disc_crc:
                 continue
 
-            yield disk.Sector(
-                chs,
-                data[:self.SECTOR_SIZE],
-                source=stream.filename,
-            )
+            self.did_read_sector(chs, data[:self.SECTOR_SIZE], stream)
+            retval = True
+
+        return retval
 
     def bogo_crc(self, data):
         '''
@@ -101,5 +96,6 @@ class DataGeneralNova(disk.DiskFormat):
 
         return crc
 
-if __name__ == "__main__":
-    main.Main(DataGeneralNova)
+ALL = [
+    DataGeneralNova,
+]

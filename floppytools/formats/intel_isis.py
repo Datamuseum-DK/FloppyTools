@@ -6,37 +6,30 @@
 
 import crcmod
 
-import main
-import disk
-import fluxstream as fs
+from ..base import media
+from ..base import fluxstream as fs
 
 crc_func = crcmod.predefined.mkCrcFun('xmodem')
 
-class IntelIsis(disk.DiskFormat):
+class IntelIsis(media.Media):
 
     ''' Intel ISIS format 8" floppy disks '''
 
-    FIRST_CHS = (0, 0, 1)
-    LAST_CHS = (76, 0, 52)
     SECTOR_SIZE = 128
+    GEOMETRY = ((0,0,1), (76, 0, 52), SECTOR_SIZE)
 
-    def validate_address_mark(self, address_mark):
-        ''' ... '''
-
-        return self.validate_chs(address_mark[1:4])
-
-    def process(self, stream):
+    def process_stream(self, stream):
         ''' ...  '''
 
-        if not self.validate_chs(stream.chs, none_ok=True):
-            print("Ignoring", stream)
-            return
+        if stream.chs[1] != 0:
+            return None
 
         am_pattern =   '|-' * 16 + fs.make_mark(0x87, 0x70)
         data_pattern =   '|-' * 16 + fs.make_mark(0x85, 0x70)
 
         flux = stream.m2fm_flux()
 
+        retval = False
         for am_pos in stream.iter_pattern(flux, pattern=am_pattern):
 
             am_flux = flux[am_pos-16:am_pos+(7*16)]
@@ -48,8 +41,9 @@ class IntelIsis(disk.DiskFormat):
             if am_crc:
                 continue
 
-            chs = self.validate_address_mark(address_mark)
-            if chs is None:
+            chs = (address_mark[1], address_mark[2], address_mark[3])
+            ms = self.sectors.get(chs)
+            if ms is None:
                 continue
 
             data_pos = flux.find(data_pattern, am_pos + 200)
@@ -71,11 +65,10 @@ class IntelIsis(disk.DiskFormat):
             if data_crc:
                 continue
 
-            yield disk.Sector(
-                chs,
-                data[1:self.SECTOR_SIZE+1],
-                source=stream.filename,
-            )
+            self.did_read_sector(chs, data[1:self.SECTOR_SIZE+1], stream)
+            retval = True
+        return retval
 
-if __name__ == "__main__":
-    main.Main(IntelIsis)
+ALL = [
+    IntelIsis,
+]

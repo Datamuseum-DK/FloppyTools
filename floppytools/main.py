@@ -8,186 +8,18 @@
 import sys
 import os
 import glob
-import math
 import time
 
-from . import disk
-from . import fluxstream
-from . import kryostream
+from .formats import index
 
 # Dont touch files if mtime is newer than this
 COOLDOWN = 2
 
-def histo(data):
-    ''' Render a utf8-art histogram of log(data) '''
-
-    height = 3 * 8
-
-    data = [math.log(max(1,x)) for x in data]
-    peak = max(data)
-    if peak == 0:
-        return
-
-    h = [int(height * x / peak) for x in data]
-
-    for j in range(-height, 1, 8):
-        t = []
-        for i in h:
-            r = int(min(max(0, i+j), 8))
-            t.append(' ▁▂▃▄▅▆▇█'[r])
-        yield "".join(t)
-
-class MediaDir(disk.Media):
-    ''' A Directory representing a Media '''
-
-    def __init__(self, dirname, medianame, formats=None, load_cache=True, save_cache=True):
-        super().__init__()
-        if formats is None:
-            formats = []
-        self.dirname = dirname
-        os.makedirs(self.dirname, exist_ok=True)
-        self.medianame = medianame
-        self.files_done = set()
-        self.cache_file = None
-        self.format_classes = formats
-        assert len(self.format_classes) > 0
-        if load_cache:
-            self.read_cache()
-        if save_cache:
-            self.cache_file = open(self.file_name(), "a", encoding="utf8")
-        self.histo = []
-
-    def file_name(self, ext="ft_cache"):
-        return os.path.join(self.dirname, self.medianame + "." + ext)
-
-    def add_sector(self, read_sector):
-        ''' Add a reading of a sector '''
-        super().add_sector(read_sector)
-        if self.cache_file:
-            self.cache_file.write(" ".join(
-                    [
-                        "sector",
-                        read_sector.source,
-                    ] + read_sector.cache_record()
-                ) + "\n"
-            )
-
-    def process_file(self, streamfilename):
-        ''' Infer the media format by asking all classes '''
-
-        rel_filename = os.path.relpath(streamfilename, self.dirname)
-        if rel_filename in self.files_done:
-            return False
-        print("Doing", streamfilename)
-        try:
-            stream = kryostream.KryoStream(streamfilename)
-        except kryostream.NotAKryofluxStream:
-            stream = fluxstream.RawStream(streamfilename)
-        if self.format_class:
-            try:
-                for read_sector in self.format_class.process(stream):
-                    read_sector.source = rel_filename
-                    self.add_sector(read_sector)
-                if self.cache_file:
-                    self.cache_file.flush()
-            except disk.NotInterested:
-                return False
-        else:
-            for cls in self.format_classes:
-                fmt = cls()
-                fmt.media = self
-                try:
-                    read_sectors = list(fmt.process(stream))
-                except disk.NotInterested:
-                    continue
-                if len(read_sectors) == 0:
-                    continue
-                fmt.media = self
-                fmt.define_geometry()
-                if self.cache_file:
-                    self.cache_file.write(
-                        "format " + fmt.__class__.__name__ + "\n"
-                    )
-                for read_sector in read_sectors:
-                    read_sector.source = rel_filename
-                    self.add_sector(read_sector)
-                if self.cache_file:
-                    self.cache_file.flush()
-                self.format_class = fmt
-        self.histo = stream.histo
-        self.files_done.add(rel_filename)
-        if self.cache_file:
-            self.cache_file.write("file " + rel_filename + "\n")
-            self.cache_file.flush()
-        return True
-
-    def status(self, detailed=False):
-        yield "Directory " + self.dirname
-        yield from super().status(detailed)
-
-    def write_result(self):
-        ''' Write result and status files '''
-
-        i = os.path.join(self.dirname, self.medianame + ".bin")
-        self.write_bin_file(i)
-        #media.write_imagedisk_file(dstname + ".imd")
-        with open(self.file_name("status"), "w", encoding="utf8") as file:
-            for line in self.status():
-                file.write(line + "\n")
-            file.write("Detailed defects:\n")
-            for defect in self.defects(True):
-                file.write("  " + defect + "\n")
-        #with open(dstname + ".meta", "w", encoding="utf8") as file:
-        #    for line in media.ddhf_meta(medianame):
-        #        file.write(line + "\n")
-
-    def read_cache_format(self, flds):
-        ''' A format line from the cache file '''
-        for cls in self.format_classes:
-            if cls.__name__ != flds[1]:
-                continue
-            fmt = cls()
-            fmt.media = self
-            self.format_class = fmt
-        if self.format_class is None:
-            print("Unknown Format", line)
-            exit(2)
-
-    def read_cache(self):
-        try:
-            with open(self.file_name(), "r", encoding="utf8") as file:
-                print("# read cache", self.file_name())
-                for line in file:
-                    flds = line.split()
-                    if flds[0] == "format":
-                        self.read_cache_format(flds)
-                    elif flds[0] == "file":
-                        self.files_done.add(flds[1])
-                    elif flds[0] == "sector":
-                        chs = tuple(int(x) for x in flds[2].split(","))
-                        octets = bytes.fromhex(flds[3])
-                        if len(flds) > 4:
-                            extra = flds[4]
-                        else:
-                            extra = ""
-                        self.format_class.cached_sector(
-                            disk.Sector(chs, octets, source=flds[1], extra=extra)
-                        )
-                    else:
-                        print("Invalid cache line")
-                        print("   ", line)
-                        exit(2)
-            self.format_class.cache_was_read()
-        except FileNotFoundError:
-            pass
-
 class Main():
     ''' Common main() implementation '''
 
-    def __init__(self, *format_classes):
-        self.format_classes = format_classes
+    def __init__(self):
         self.files_done = set()
-        self.myself = sys.argv[0]
         self.verbose = 0
         self.defects = {}
         self.mdir = None
@@ -201,74 +33,155 @@ class Main():
             self.esc_eol = ""
             self.esc_eos = ""
 
-        if len(sys.argv) >= 3 and sys.argv[1] == '-d':
-            self.dir_mode()
-        elif len(sys.argv) in (2, 3) and sys.argv[1] == '-m':
-            self.monitor_mode()
-        elif len(sys.argv) in (2, 3) and sys.argv[1] == '-r':
-            self.repair_mode()
-        else:
+        run_mode = None
+        self.ignore_cache = False
+        self.just_try = False
+        self.end_when_complete = False
+        format_names = []
+        while len(sys.argv) > 1:
+            sys.argv.pop(0)
+            if sys.argv[0] == '-a':
+                self.ignore_cache = True
+            elif sys.argv[0] == '-d':
+                run_mode = self.dir_mode
+            elif sys.argv[0] == '-e':
+                self.end_when_complete = True
+            elif sys.argv[0] in ('-h', '-?', '--help'):
+                self.usage()
+                sys.exit(0)
+            elif sys.argv[0][:2] == '-f' and len(sys.argv[0]) > 2:
+                format_names += sys.argv[0][2:].split(",")
+            elif sys.argv[0] == '-f':
+                format_names += sys.argv.pop(1).split(",")
+            elif sys.argv[0] == '-m':
+                run_mode = self.monitor_mode
+            elif sys.argv[0] == '-n':
+                self.just_try = True
+            elif sys.argv[0][0] == '-':
+                print("Unknown flag", sys.argv[0])
+                self.usage()
+                sys.exit(2)
+            else:
+                break
+
+        if run_mode is None:
+            print("Specify run mode with -d or -m ")
             self.usage()
+            sys.exit(2)
+
+        if not format_names:
+            format_names.append("all")
+        self.format_classes = {}
+        for fnm in format_names:
+            i = list(index.find_formats(fnm))
+            if not i:
+                print("Format name", fnm, "unrecognized")
+                self.usage()
+                sys.exit(2)
+            for fnm, fcls in i:
+                self.format_classes[fnm] = fcls
+        run_mode()
 
     def usage(self, err=None):
         ''' ... '''
 
         if err:
             print(err)
+        print("")
         print("Usage:")
-        print("  ", self.myself, "-m [source_directory]")
-        print("  ", self.myself, "-d media_directory [stream_files]…")
-        sys.exit(2)
+        print("------")
+        opt = "[options]"
+        print("  python3 -m", __package__, opt, "-m [project_directory]")
+        print("  python3 -m", __package__, opt, "-d media_directory [stream_files]…")
+        print("")
+        print("Options:")
+        print("--------")
+        print("")
+        print("  -a                       - ignore cache (= read everything)")
+        print("  -e                       - end when complete")
+        print("  -f format[,format]*      - formats to try")
+        print("  -n                       - dont write cache (= just try)")
+        print("")
+        print("Formats:")
+        print("--------")
+        for nm, doc in index.documentation.items():
+            print("\n  " + nm + "\n\t" + "\n\t".join(doc[0]))
+        print("")
+        print("Aliases:")
+        print("--------")
+        for nm, which in index.aliases.items():
+            print("\n  " + nm + "\n\t" + ", ".join(sorted(which)))
+        print("")
 
-    def set_media(self, dirname = None, medianame = None):
-        ''' Set the active media '''
-
-        if self.mdir and self.mdir.medianame == medianame:
+    def sync_media(self):
+        ''' Close a media directory '''
+        if not self.mdir:
             return
-        if self.mdir:
-            self.defects[self.mdir.medianame] = self.mdir.list_defects()
-            sys.stdout.write(self.esc_home)
-            for i in self.mdir.status():
-                print(i + self.esc_eol)
-            self.mdir.write_result()
-            sys.stdout.write(self.esc_eos)
-            self.mdir = None
-        if dirname is not None:
-            self.mdir = MediaDir(dirname, medianame, formats=self.format_classes)
+        self.defects[self.mdir.medianame] = self.mdir.summary()
+        with open(self.mdir.file_name(".status"), "w", encoding="utf8") as file:
+            file.write("Dirname " + self.mdir.medianame + "\n")
+            for i in self.mdir.picture():
+                file.write(i + '\n')
+            for i in sorted(self.mdir.messages):
+                file.write(i + '\n')
+            file.write(self.mdir.summary() + '\n')
+            for i, j in self.mdir.missing():
+                file.write("\t" + i + " " + j + "\n")
+        self.mdir = None
+
+    def mystatus(self, filename):
+        ''' Single line status '''
+        l0 = [filename] + list(self.mdir.messages) + [self.mdir.summary()]
+        sys.stdout.write("  ".join(l0) + self.esc_eol + '\n')
+
+    def mypicture(self, filename):
+        ''' Full Picture '''
+        sys.stdout.write(self.esc_home)
+        self.mystatus(filename)
+        for line in self.mdir.picture():
+            print(line + self.esc_eol)
+        sys.stdout.write(self.esc_eos)
 
     def process_file(self, filename):
-        ''' Process one track file '''
+        ''' Process one file '''
+        retval = self.mdir.process_file(filename)
+        if retval:
+            self.mypicture(filename)
+        else:
+            self.mystatus(filename)
+        sys.stdout.flush()
+        return retval
 
-        if filename in self.files_done:
-            return
-        if self.mdir.process_file(filename):
-            sys.stdout.write(self.esc_home)
-            for line in self.mdir.status():
-                print(line + self.esc_eol)
-            for line in histo(self.mdir.histo):
-                print(line + self.esc_eol)
-            print("Did", filename, self.esc_eos)
-            sys.stdout.flush()
-        self.files_done.add(filename)
+    def process_dir(self, dirname, files):
+        ''' Process some files in one directory '''
+        if self.mdir:
+            self.sync_media()
+            self.mdir = None
+        for fn in files:
+            if not self.mdir:
+                for cls in self.format_classes.values():
+                    self.mdir = cls(
+                        dirname,
+                        load_cache = not self.ignore_cache,
+                        save_cache = not self.just_try,
+                    )
+
+                    self.process_file(fn)
+                    if self.mdir.any_good():
+                        break
+                    self.mdir = None
+            else:
+                self.process_file(fn)
+            self.files_done.add(fn)
 
     def dir_mode(self):
         ''' Process a specific directory '''
 
-        print("DIR MODE", sys.argv)
-        assert len(sys.argv) >= 3
-        sys.argv.pop(0)
-        sys.argv.pop(0)
+        if not sys.argv:
+            print("Specify directory for -d mode")
+            self.usage()
+            sys.exit(2)
         dirname = sys.argv.pop(0)
-        medianame = os.path.split(dirname)
-        if medianame[1] == "":
-            print("MN", medianame)
-            medianame = os.path.split(medianame[0])
-        if medianame[1] == "":
-            medianame = medianame[0]
-        else:
-            medianame = medianame[1]
-        if medianame in ("", ".", "..",):
-            medianame = "XXX"
 
         if len(sys.argv) == 0:
             sys.argv = list(
@@ -279,56 +192,30 @@ class Main():
 
         if len(sys.argv) == 0:
             print("Nothing to do ?")
-            exit(2)
+            sys.exit(2)
 
-        self.set_media(dirname, medianame)
-
-        if len(sys.argv) == 0:
-            sys.argv = list(sorted(glob.glob(dirname + "/*/*.raw")))
         sys.stdout.write(self.esc_home + self.esc_eos)
-        for filename in sys.argv:
-            self.process_file(filename)
-        for line in self.mdir.status(detailed=True):
-            print(line + self.esc_eol)
-        sys.stdout.write(self.esc_eos+"\n")
-        sys.stdout.flush()
-        self.mdir.write_result()
+        self.process_dir(dirname, sys.argv)
+        self.sync_media()
 
-    def repair_mode(self):
-        ''' Attempt repair of missing sectors '''
-
-        print("REPAIR MODE", sys.argv)
-        assert len(sys.argv) >= 3
-        sys.argv.pop(0)
-        sys.argv.pop(0)
-        dirname = sys.argv.pop(0)
-        medianame = os.path.split(dirname)[1]
-        if medianame == ".":
-            medianame = "XXX"
-
-        if len(sys.argv) == 0:
-            sys.argv = list(
-                sorted(
-                    glob.glob(os.path.join(dirname, "*", "*.raw"))
-                )
-            )
-
-        if len(sys.argv) == 0:
-            print("Nothing to do ?")
-            exit(2)
-
-        self.set_media(dirname, medianame)
-
-        if len(sys.argv) == 0:
-            sys.argv = list(sorted(glob.glob(dirname + "/*/*.raw")))
-        sys.stdout.write(self.esc_home + self.esc_eos)
-        for filename in sys.argv:
-            self.process_file(filename)
-        for line in self.mdir.status(detailed=True):
-            print(line + self.esc_eol)
-        sys.stdout.write(self.esc_eos+"\n")
-        sys.stdout.flush()
-        self.mdir.write_result()
+    def report_incomplate(self):
+        ''' Report incomplete media '''
+        l = []
+        for dirname, defects in sorted(self.defects.items()):
+            if 'COMPLETE' not in defects:
+                l.append([dirname] + defects.split())
+        if not l:
+            return
+        print()
+        w = [0] * max(len(x) for x in l)
+        for x in l:
+            for n, y in enumerate(x):
+                w[n] = max(w[n], len(y))
+        for row in l:
+            x = []
+            for width, datum in zip(w, row):
+                x.append(datum.ljust(width))
+            print("  ", " ".join(x))
 
     def monitor_mode(self):
         ''' Monitor a directory while media are being read '''
@@ -348,43 +235,36 @@ class Main():
                 m = 0
                 continue
             m += 1
-            if m != 10:
+            if m == 3:
+                self.sync_media()
+                self.report_incomplate()
+                print()
+                print("Waiting for stream files…")
+                sys.stdout.flush()
+            if m < 10:
                 time.sleep(1)
-                continue
-            print()
-            print("Incomplete media (if any):")
-            for dirname, defects in sorted(self.defects.items()):
-                if defects:
-                    print(" ", dirname, defects)
-            sys.stdout.flush()
+            else:
+                time.sleep(5)
 
     def monitor_process_pending_files(self):
         ''' Process pending files '''
 
-        for fn in sorted(self.monitor_files_todo()):
-            i = os.path.split(fn)
-            # trackfile = i[1]
-            i = os.path.split(i[0])
-            # reading = i[1]
-            i = os.path.split(i[0])
-            medianame = i[1]
-            self.set_media(medianame, medianame)
-            self.process_file(fn)
-            sys.stdout.flush()
-        self.set_media()
+        for dirname in sorted(glob.glob("*")):
+            if os.path.isdir(dirname):
+                fns = list(sorted(self.monitor_files_todo(dirname)))
+                if fns:
+                    if dirname not in self.defects:
+                        self.defects[dirname] = " - NOTHING"
+                    self.process_dir(dirname, fns)
 
-    def monitor_files_todo(self):
-        ''' Yield a list of new */*/*.raw files which have cooled down '''
+    def monitor_files_todo(self, dirname):
+        ''' Yield a list of new ${dirname}/*/*.raw files which have cooled down '''
 
-        for path, _dirs, files in os.walk(self.path):
-            if path.count("/") != 2:
+        for fn in sorted(glob.glob(os.path.join(dirname, "*/*.raw"))):
+            if fn[-4:] != ".raw":
                 continue
-            for fn in files:
-                if fn[-4:] != ".raw":
-                    continue
-                rfn = os.path.join(path, fn)
-                if rfn in self.files_done:
-                    continue
-                st = os.stat(rfn)
-                if st.st_mtime + COOLDOWN < time.time():
-                    yield rfn
+            if fn in self.files_done:
+                continue
+            st = os.stat(fn)
+            if st.st_mtime + COOLDOWN < time.time():
+                yield fn

@@ -6,6 +6,8 @@
 '''
 
 import struct
+import math
+
 import crcmod
 
 from . import fluxstream
@@ -21,6 +23,7 @@ class NotAKryofluxStream(Exception):
 class KryoStream(fluxstream.FluxStream):
     ''' A Kryoflux Stream file '''
     def __init__(self, filename):
+        super().__init__()
         i = filename.split('.')
         if i[-1] != 'raw':
             raise NotAKryofluxStream(filename + " Does not end in ….raw")
@@ -37,17 +40,11 @@ class KryoStream(fluxstream.FluxStream):
         self.strm = {}
         self.index = []
         self.oob = []
-        self.histo = [0] * 80
         self.stream_end = None
         self.result_code = None
         self.sck = None
         self.ick = None
 
-        self.deframe()
-        if hasattr(self, "kfinfo_sck"):
-            self.sck = float(self.kfinfo_sck)
-        if hasattr(self, "kfinfo_ick"):
-            self.ick = float(self.kfinfo_ick)
 
     def __str__(self):
         return "<KryoStream " + self.filename + ">"
@@ -55,11 +52,16 @@ class KryoStream(fluxstream.FluxStream):
     def __lt__(self, other):
         return self.filename < other.filename
 
+    def serialize(self):
+        return self.filename
+
     def iter_dt(self):
+        if not self.flux:
+            self.deframe()
         last = 0
         for i in self.strm.values():
             dt = i - last
-            self.histo[min(dt//3, 79)] += 1
+            self.histo[min(dt//self.histo_scale, len(self.histo)-1)] += 1
             yield dt
             last = i
 
@@ -128,3 +130,27 @@ class KryoStream(fluxstream.FluxStream):
                 print ("?", blkhd, self.filename)
                 idx += 1
                 break
+
+        if hasattr(self, "kfinfo_sck"):
+            self.sck = float(self.kfinfo_sck)
+        if hasattr(self, "kfinfo_ick"):
+            self.ick = float(self.kfinfo_ick)
+
+    def dt_histogram(self):
+        ''' Render a utf8-art histogram of log(data) '''
+
+        height = 3 * 8
+
+        data = [math.log(max(1,x)) for x in self.histo]
+        peak = max(data)
+        if peak == 0:
+            return
+
+        h = [int(height * x / peak) for x in data]
+
+        for j in range(-height, 1, 8):
+            t = []
+            for i in h:
+                r = int(min(max(0, i+j), 8))
+                t.append(' ▁▂▃▄▅▆▇█'[r])
+            yield "".join(t)

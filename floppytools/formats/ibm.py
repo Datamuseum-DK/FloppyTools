@@ -5,13 +5,10 @@
    ~~~~~~~~~~
 '''
 
-import sys
-
 import crcmod
 
-from . import main
-from . import disk
-from . import fluxstream as fs
+from ..base import media
+from ..base import fluxstream as fs
 
 MFM_LUT = {
     "--|--", #00
@@ -28,7 +25,7 @@ MFM_LUT = {
 
 crc_func = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 
-class IbmFm(disk.DiskFormat):
+class IbmFm(media.Media):
 
     ''' IBM format 8" floppy disks '''
 
@@ -79,10 +76,10 @@ class IbmFm(disk.DiskFormat):
             r = range(1, 77)
         for c in r:
             for s in range(1, nsec + 1):
-                self.media.define_sector((c, chs[1], s))
+                self.define_sector((c, chs[1], s), length)
         self.geometry[index] = True
-        if False not in self.geometry:
-            self.media.defined_geometry = True
+        #if False not in self.geometry:
+        #    self.media.defined_geometry = True
 
     def cached_sector(self, read_sector):
         ''' ... '''
@@ -96,10 +93,16 @@ class IbmFm(disk.DiskFormat):
     def validate_address_mark(self, address_mark):
         ''' ... '''
 
-        return self.validate_chs(address_mark[1:4])
+        chs = (address_mark[1], address_mark[2], address_mark[3])
+        if chs[0] == 0 and chs[1] == 0 and 1 <= chs[2] <= 8:
+            return chs
+        if self.defined_chs(chs):
+            return chs
+        return chs
 
-    def process(self, stream):
+    def process_stream(self, stream):
         ''' ...  '''
+
 
         fm_am_pattern = '|---' * self.GAP1
         fm_am_pattern += fs.make_mark_fm(*self.FM_ADDRESS_MARK)
@@ -112,18 +115,17 @@ class IbmFm(disk.DiskFormat):
         am_list = list(stream.iter_pattern(flux, pattern=fm_am_pattern))
 
         if len(am_list) > 0:
-            sys.stdout.flush()
-            yield from self.fm_process(stream, flux, am_list)
-            return
+            return self.fm_process(stream, flux, am_list)
 
         flux = stream.mfm_flux()
 
         am_list = list(stream.iter_pattern(flux, pattern=mfm_am_pattern))
         if len(am_list) > 0:
-            sys.stdout.flush()
+            #print("TRY MFM", len(am_list))
             self.fm_first = False
-            yield from self.mfm_process(stream, flux, am_list)
-            return
+            return self.mfm_process(stream, flux, am_list)
+
+        return False
 
     def mfm_process(self, stream, flux, am_list):
 
@@ -131,6 +133,7 @@ class IbmFm(disk.DiskFormat):
                        #  1 0 1 0 0 0 0 1 1 0 1 0 0 0 0 1   xa1a1
         data_pattern += '-|---|--|---|--|-|---|--|---|--|'
 
+        retval = False
         for am_pos in am_list:
             extra = ["mfm"]
             address_mark = stream.flux_data_mfm(flux[am_pos-64:am_pos+(6*16)])
@@ -207,13 +210,9 @@ class IbmFm(disk.DiskFormat):
                 continue
 
             self.add_geometry(chs, sector_size, True)
-            yield disk.Sector(
-                chs,
-                data[4:sector_size+4],
-                source=stream.filename,
-                extra=",".join(extra),
-            )
-
+            self.did_read_sector(chs, data[4:sector_size+4], stream, extra)
+            retval = True
+        return retval
 
     def mfm_invalid(self, flux):
         for n in range(0, len(flux)-5, 2):
@@ -273,17 +272,22 @@ class IbmFm(disk.DiskFormat):
         data_pattern = '|---' * self.GAP1 + fs.make_mark_fm(*self.DATA_MARK)
         delete_pattern = '|---' * self.GAP1 + fs.make_mark_fm(*self.DELETE_MARK)
 
+        retval = False
         for am_pos in am_list:
+            self.trace("am_pos", "FM")
             address_mark = stream.flux_data_fm(flux[am_pos-32:am_pos+(6*32)])
             if address_mark is None:
+                self.trace(am_pos, "NOAM")
                 continue
 
             am_crc = crc_func(address_mark)
             if am_crc:
+                self.trace(am_pos, address_mark, "AMCRC")
                 continue
 
             chs = self.validate_address_mark(address_mark)
             if chs is None:
+                self.trace(am_pos, chs, "INVAL CHS")
                 continue
 
             for pattern in (data_pattern, delete_pattern):
@@ -308,12 +312,14 @@ class IbmFm(disk.DiskFormat):
                 continue
 
             self.add_geometry(chs, sector_size, False)
-            yield disk.Sector(
+            self.did_read_sector(
                 chs,
                 data[1:sector_size+1],
-                source=stream.filename,
-                extra="fm",
+                stream,
+                flags=("fm",)
             )
+            retval = True
+        return retval
 
 class IbmFm128Ss(IbmFm):
     ''' ... '''
@@ -359,6 +365,3 @@ ALL = (
     #IbmFm512Ss,
     #IbmFm512Ds,
 )
-
-if __name__ == "__main__":
-    main.Main(*ALL)

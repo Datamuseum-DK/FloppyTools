@@ -7,19 +7,17 @@
 
 import crcmod
 
-from . import main
-from . import disk
-from . import fluxstream as fs
+from ..base import media
+from ..base import fluxstream as fs
 
 crc_func = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 
-class DecRx02(disk.DiskFormat):
+class DecRx02(media.Media):
 
     ''' IBM format 8" floppy disks '''
 
-    FIRST_CHS = (0, 0, 1)
-    LAST_CHS = (76, 0, 26)
     SECTOR_SIZE = 256
+    GEOMETRY = ((0, 0, 1), (76, 0, 26), SECTOR_SIZE)
 
     ADDRESS_MARK = (0xc7, 0xfe)
     HDDATA_MARK = (0xc7, 0xfd)
@@ -32,14 +30,19 @@ class DecRx02(disk.DiskFormat):
 
         return self.validate_chs(address_mark[1:4])
 
-    def process(self, stream):
+    def process_stream(self, stream):
         ''' ...  '''
+
+        schs = (stream.chs[0], stream.chs[1], 1)
+        if not self.defined_chs(schs):
+            return None
 
         am_pattern = '|---' * self.GAP1 + fs.make_mark_fm(*self.ADDRESS_MARK)
         hddata_pattern = '|---' * self.GAP1 + fs.make_mark_fm(*self.HDDATA_MARK)
 
         flux = stream.mfm_flux()
 
+        retval = False
         for am_pos in stream.iter_pattern(flux, pattern=am_pattern):
 
             address_mark = stream.flux_data_fm(flux[am_pos-32:am_pos+(6*32)])
@@ -51,8 +54,8 @@ class DecRx02(disk.DiskFormat):
             if am_crc:
                 continue
 
-            chs = self.validate_address_mark(address_mark)
-            if chs is None:
+            chs = (address_mark[1], address_mark[2], address_mark[3])
+            if not self.defined_chs(chs):
                 continue
 
             data_pos = flux.find(
@@ -71,8 +74,9 @@ class DecRx02(disk.DiskFormat):
             data = bytes([0xfd]) + self.flux_to_bytes(data_flux[1:])
 
             data_crc = crc_func(data)
-            if not data_crc:
-                yield disk.Sector(chs, data[1:self.SECTOR_SIZE+1])
+            self.did_read_sector(chs, data[1:self.SECTOR_SIZE+1], stream)
+            retval = True
+        return retval
 
     def flux_to_bytes(self, flux):
         ''' RX02 uses a modified MFM encoding '''
@@ -95,5 +99,6 @@ class DecRx02(disk.DiskFormat):
         data = bytes(j)
         return data
 
-if __name__ == "__main__":
-    main.Main(DecRx02)
+ALL = [
+    DecRx02,
+]

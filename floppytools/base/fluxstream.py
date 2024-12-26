@@ -113,6 +113,20 @@ class FluxStream():
     mfm_cache = None
     m2fm_cache = None
 
+    def __init__(self):
+        self.config_histogram()
+
+    def serialize(self):
+        return "-"
+
+    def config_histogram(self, width=None, scale=None):
+        if width is None:
+            width = 80
+        if scale is None:
+            scale = 3
+        self.histo = [0] * width
+        self.histo_scale = scale
+
     def fm_flux(self):
         ''' Return FM flux string '''
         if self.fm_cache is None:
@@ -155,6 +169,15 @@ class FluxStream():
     def iter_dt(self):
         if False:
             yield None
+
+    def peak_dt(self, lo, hi):
+        peak = 0
+        dt = None
+        for probe in range((lo // self.histo_scale), min(hi//self.histo_scale, len(self.histo)-2)):
+            if self.histo[probe] > peak:
+                peak = self.histo[probe]
+                dt = probe * self.histo_scale
+        return dt
 
 class RawStream(FluxStream):
     ''' Raw stream file '''

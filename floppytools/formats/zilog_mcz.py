@@ -9,28 +9,27 @@
 
 import crcmod
 
-from . import main
-from . import disk
-from . import fluxstream
+from ..base import media
+from ..base import fluxstream
 
 crc_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
 
-class ZilogMCZ(disk.DiskFormat):
+class ZilogMCZ(media.Media):
+    ''' ... '''
 
-    FIRST_CHS = (0, 0, 0)
-    LAST_CHS = (77, 0, 31)
     SECTOR_SIZE = 136
+    GEOMETRY = ((0, 0, 0), (77, 0, 31), SECTOR_SIZE)
 
     GAP = fluxstream.fm_gap(32)
 
-    def process(self, stream):
-
-        if not self.validate_chs(stream.chs, none_ok=True):
-            print("Ignoring", stream)
-            return
+    def process_stream(self, stream):
+        schs = (stream.chs[0], stream.chs[1], 0)
+        if not self.defined_chs(schs):
+            return None
 
         flux = stream.fm_flux()
 
+        retval = False
         for data_pos in stream.iter_pattern(flux, pattern=self.GAP):
             data_pos -= 4
 
@@ -42,14 +41,14 @@ class ZilogMCZ(disk.DiskFormat):
             if data_crc != 0:
                 continue
 
-            chs = self.validate_chs((data[1], 0, data[0] & 0x7f))
-            if not chs:
+            chs = (data[1], 0, data[0] & 0x7f)
+            if not self.defined_chs(chs):
                 continue
 
-            yield disk.Sector(
-                chs,
-                data[:-2],
-            )
+            self.did_read_sector(chs, data[:-2], stream)
+            retval = True
+        return retval
 
-if __name__ == "__main__":
-    main.Main(ZilogMCZ)
+ALL = [
+    ZilogMCZ,
+]

@@ -7,10 +7,8 @@
 
 import crcmod
 
-from . import main
-from . import disk
-from . import fluxstream
-from . import rev_bits
+from ..base import media
+from ..base import rev_bits
 
 crc_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
 
@@ -21,20 +19,21 @@ DM = '--|-' * 10 + '-|' * 32 + '--|-|-|--|---|--'
 
 crc_func = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 
-class HP9885(disk.DiskFormat):
+class HP9885(media.Media):
 
     ''' HP9885 8" floppies for MX21 '''
 
-    FIRST_CHS = (0, 0, 0)
-    LAST_CHS = (66, 0, 29)
     SECTOR_SIZE = 256
+    GEOMETRY = ((0, 0, 0), (66, 0, 29), SECTOR_SIZE)
 
-    def process(self, stream):
-        if not self.validate_chs(stream.chs, none_ok=True):
-            raise disk.NotInterested()
+    def process_stream(self, stream):
+        schs = (stream.chs[0], stream.chs[1], 0)
+        if not self.defined_chs(schs):
+            return None
 
         flux = stream.m2fm_flux()
         prev = 0
+        retval = False
         for am_pos in stream.iter_pattern(flux, pattern=AM):
             amf = flux[am_pos:am_pos + 80]
             am = stream.flux_data_mfm(amf)
@@ -80,18 +79,15 @@ class HP9885(disk.DiskFormat):
                         "%04x" % amc,
                         dataf[:10],
                         "%04x" % datac,
+                        "%04x" % len(data),
 		        txt
 	            )
 
-                yield disk.Sector(
-                    (am[0], 0, am[1]),
-                    data,
-                )
+                self.did_read_sector((am[0], 0, am[1]), data[:self.SECTOR_SIZE], stream )
+                retval = True
             prev = am_pos
+        return retval
 
 ALL = [
     HP9885,
 ]
-
-if __name__ == "__main__":
-    main.Main(HP9885)

@@ -10,31 +10,29 @@
 
 import crcmod
 
-from . import main
-from . import disk
-from . import fluxstream
+from ..base import media
 
 crc_func = crcmod.predefined.mkCrcFun('crc-16-buypass')
 
 AM_MARK = '--|-' * 32 + '|-' * 3
 DATA_MARK = '--|-' * 24 + '|-' * 3
 
-class WangWcs(disk.DiskFormat):
+class WangWcs(media.Media):
 
     ''' WANG WCS format 8" floppy disks '''
 
-    FIRST_CHS = (0, 0, 0)
-    LAST_CHS = (76, 0, 15)
     SECTOR_SIZE = 256
+    GEOMETRY = ((0, 0, 0), (76, 0, 15), SECTOR_SIZE)
 
-    def process(self, stream):
+    def process_stream(self, stream):
 
-        if not self.validate_chs(stream.chs, none_ok=True):
-            print("Ignoring", stream)
-            return
+        schs = (stream.chs[0], stream.chs[1], 1)
+        if not self.defined_chs(schs):
+            return None
 
         flux = stream.fm_flux()
 
+        retval = False
         for am_pos in stream.iter_pattern(flux, pattern=AM_MARK):
 
             address_mark = stream.flux_data_fm(flux[am_pos:am_pos+6*32])
@@ -42,8 +40,8 @@ class WangWcs(disk.DiskFormat):
                 continue
             if max(address_mark[2:]):
                 continue
-            chs = self.validate_chs((address_mark[0], 0, address_mark[1]))
-            if not chs:
+            chs = (address_mark[0], 0, address_mark[1])
+            if not self.defined_chs(chs):
                 continue
 
             data_pos = flux.find(DATA_MARK, am_pos + 500)
@@ -59,11 +57,10 @@ class WangWcs(disk.DiskFormat):
             if data_crc:
                 continue
 
-            yield disk.Sector(
-                chs,
-                data[:self.SECTOR_SIZE],
-                source=stream.filename,
-            )
+            self.did_read_sector(chs, data[:self.SECTOR_SIZE], stream)
+            retval = True
+        return retval
 
-if __name__ == "__main__":
-    main.Main(WangWcs)
+ALL = [
+    WangWcs,
+]
