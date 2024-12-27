@@ -24,20 +24,13 @@ class Main():
         self.defects = {}
         self.mdir = None
 
-        if os.isatty(sys.stdout.fileno()):
-            self.esc_home = "\x1b[H"
-            self.esc_eol = "\x1b[K"
-            self.esc_eos = "\x1b[J"
-        else:
-            self.esc_home = ""
-            self.esc_eol = ""
-            self.esc_eos = ""
 
         run_mode = None
         self.ignore_cache = False
         self.just_try = False
         self.end_when_complete = False
         format_names = []
+        ttymode = os.isatty(sys.stdout.fileno())
         while len(sys.argv) > 1:
             sys.argv.pop(0)
             if sys.argv[0] == '-a':
@@ -57,6 +50,8 @@ class Main():
                 run_mode = self.monitor_mode
             elif sys.argv[0] == '-n':
                 self.just_try = True
+            elif sys.argv[0] == '-t':
+                ttymode = True
             elif sys.argv[0][0] == '-':
                 print("Unknown flag", sys.argv[0])
                 self.usage()
@@ -64,6 +59,14 @@ class Main():
             else:
                 break
 
+        if ttymode:
+            self.esc_home = "\x1b[H"
+            self.esc_eol = "\x1b[K"
+            self.esc_eos = "\x1b[J"
+        else:
+            self.esc_home = ""
+            self.esc_eol = ""
+            self.esc_eos = ""
         if run_mode is None:
             print("Specify run mode with -d or -m ")
             self.usage()
@@ -101,6 +104,7 @@ class Main():
         print("  -e                       - end when complete")
         print("  -f format[,format]*      - formats to try")
         print("  -n                       - dont write cache (= just try)")
+        print("  -t                       - force tty mode (= use escape sequences)")
         print("")
         print("Formats:")
         print("--------")
