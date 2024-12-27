@@ -261,7 +261,9 @@ class Q1MicroLiteFM(Q1MicroLiteCommon):
         return csum == 0
 
     def am_to_chs(self, stream, flux):
-        am_data = stream.flux_data_fm(flux[:12*16])
+        am_data = stream.flux_data_fm(flux[:6*32])
+        if len(am_data) != 6:
+            return None
         if am_data[0] != 0x00:
             return None
         if am_data[1] != 0x00:
