@@ -235,24 +235,31 @@ class MediaAbc():
         retval = self.status_cache.get("summary")
         if retval is None:
             ngood = 0
+            nextra = 0
             badones = {}
             goodset = CHSSet()
             badset = CHSSet()
             l = [ self.name ]
             for ms in self.sectors.values():
                 i, j = self.sector_status(ms)
-                if i:
+                defd = ms.has_flag("defined")
+                if i and defd:
                     ngood += 1
+                    goodset.add(ms.chs)
+                elif i:
+                    nextra += 1
                     goodset.add(ms.chs)
                 else:
                     badset.add(ms.chs)
                     if j not in badones:
                         badones[j] = []
                     badones[j].append(ms)
-            if ngood == 0:
+            if ngood == 0 and nextra == 0:
                 l.append("NOTHING")
             elif self.n_expected and ngood == self.n_expected:
                 l.append("COMPLETE")
+                if nextra:
+                    l.append("EXTRA")
             else:
                 if not self.n_expected and not badones:
                     l.append("SOMETHING")
