@@ -31,26 +31,34 @@ class Main():
         self.end_when_complete = False
         format_names = []
         ttymode = os.isatty(sys.stdout.fileno())
-        while len(sys.argv) > 1:
-            sys.argv.pop(0)
+        sys.argv.pop(0)
+        while len(sys.argv) > 0:
             if sys.argv[0] == '-a':
                 self.ignore_cache = True
+                sys.argv.pop(0)
             elif sys.argv[0] == '-d':
                 run_mode = self.dir_mode
+                sys.argv.pop(0)
             elif sys.argv[0] == '-e':
                 self.end_when_complete = True
+                sys.argv.pop(0)
             elif sys.argv[0] in ('-h', '-?', '--help'):
                 self.usage()
                 sys.exit(0)
             elif sys.argv[0][:2] == '-f' and len(sys.argv[0]) > 2:
                 format_names += sys.argv[0][2:].split(",")
+                sys.argv.pop(0)
             elif sys.argv[0] == '-f':
-                format_names += sys.argv.pop(1).split(",")
+                sys.argv.pop(0)
+                format_names += sys.argv.pop(0).split(",")
             elif sys.argv[0] == '-m':
+                sys.argv.pop(0)
                 run_mode = self.monitor_mode
             elif sys.argv[0] == '-n':
+                sys.argv.pop(0)
                 self.just_try = True
             elif sys.argv[0] == '-t':
+                sys.argv.pop(0)
                 ttymode = True
             elif sys.argv[0][0] == '-':
                 print("Unknown flag", sys.argv[0])
@@ -224,8 +232,12 @@ class Main():
     def monitor_mode(self):
         ''' Monitor a directory while media are being read '''
 
-        if len(sys.argv) > 2:
-            os.chdir(sys.argv[2])
+        if len(sys.argv) > 1:
+            print("Too many arguments for -m mode")
+            self.usage()
+            sys.exit(2)
+        if sys.argv:
+            os.chdir(sys.argv.pop(0))
         self.path = "."
 
         m = 0
