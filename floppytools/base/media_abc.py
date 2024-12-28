@@ -174,7 +174,9 @@ class MediaAbc():
         elif ms.sector_length is None:
             ms.sector_length = sector_length
         else:
-            assert ms.sector_length == sector_length
+            if ms.sector_length != sector_length:
+                self.trace("Different defined sector lengths", chs, sector_length, ms)
+                self.message("SECTOR_LENGTH_CONFUSION")
         self.cyl_no.add(chs[0])
         self.hd_no.add(chs[1])
         self.sec_no.add(chs[2])
