@@ -6,6 +6,7 @@
 '''
 
 from .chsset import CHSSet
+from collections import Counter
 
 class ReadSector():
     ''' One reading of a sector '''
@@ -96,18 +97,19 @@ class MediaSector():
         ''' Report status and visual aid '''
 
         if len(self.values) == 0:
-            return False, '×'
-        if len(self.values) > 1 and self.find_majority():
-            return True, "░"
+            return False, 'x', None
+        maj = self.find_majority()
+        if len(self.values) > 1 and maj:
+            return True, "░", len(maj)
         if len(self.values) > 1:
-            return False, '╬'
+            return False, '╬', None
         if self.sector_length:
             k = list(self.values.keys())[0]
             if len(k) > self.sector_length:
-                return False, '>'
+                return False, '>', len(maj)
             if len(k) < self.sector_length:
-                return False, '<'
-        return True, "×▁▂▃▄▅▆▇█"[min(len(self.readings), 7)]
+                return False, '<', len(maj)
+        return True, "×▁▂▃▄▅▆▇█"[min(len(self.readings), 7)], len(maj)
 
     def sector_status(self):
         ''' Report status and visual aid '''
@@ -150,6 +152,14 @@ class MediaAbc():
             return txt
         self.messages.add(txt)
         return txt
+
+    def get_sector(self, chs):
+        assert len(chs) == 3
+        ms = self.sectors.get(chs)
+        if ms is None:
+            ms = MediaSector(chs)
+            self.sectors[chs] = ms
+        return ms
 
     def add_read_sector(self, rs):
         assert len(rs.chs) == 3
@@ -194,13 +204,23 @@ class MediaAbc():
             l.append("%4d " % cyl_no)
         else:
             l.append("%4d,%2d " % (cyl_no, head_no))
+        lens = []
+        nsec = 0
         for sec_no in range(min(self.sec_no), max(self.sec_no) + 1):
             ms = self.sectors.get((cyl_no, head_no, sec_no))
             if ms is None:
                 l.append(' ')
             else:
-                _i, j = self.sector_status(ms)
+                nsec += 1
+                _i, j, k = self.sector_status(ms)
                 l.append(j)
+                if k is not None:
+                    lens.append(k)
+        if lens:
+            i = Counter(lens).most_common()
+            l.insert(1, ("%d*%d" % (nsec, i[0][0])).ljust(9))
+        else:
+            l.insert(1, " " * 9)
         return l
 
     def picture_sec_x(self):
@@ -223,7 +243,7 @@ class MediaAbc():
     def missing(self):
         why = {}
         for ms in self.sectors.values():
-            i, j = self.sector_status(ms)
+            i, j, k = self.sector_status(ms)
             if i:
                 continue
             if j not in why:
@@ -243,7 +263,7 @@ class MediaAbc():
             badset = CHSSet()
             l = [ self.name ]
             for ms in self.sectors.values():
-                i, j = self.sector_status(ms)
+                i, j, k = self.sector_status(ms)
                 defd = ms.has_flag("defined")
                 if i and defd:
                     ngood += 1
@@ -285,7 +305,7 @@ class MediaAbc():
 
     def any_good(self):
         for ms in sorted(self.sectors.values()):
-            i, _j = self.sector_status(ms)
+            i, _j, k = self.sector_status(ms)
             if i:
                 return True
         return False

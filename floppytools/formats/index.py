@@ -12,8 +12,8 @@ documentation = {
     "HP9885": [
         ['HP9885 8" floppies for MX21'],
     ],
-    "IbmFm128Ss": [
-        ['...'],
+    "Ibm": [
+        ['IBM format floppy disks'],
     ],
     "IntelIsis": [
         ['Intel ISIS format 8" floppy disks'],
@@ -36,6 +36,9 @@ documentation = {
 }
 
 aliases = {
+    "IBM": [
+        "Ibm",
+    ],
     "Q1": [
         "Q1MicroLiteMFM28",
         "Q1MicroLiteMFM39",
@@ -53,9 +56,12 @@ def find_formats(target):
     elif target == "HP9885":
         from . import hp98xx
         yield ("HP9885", hp98xx.ALL[0])
-    elif target == "IbmFm128Ss":
+    elif target == "IBM":
         from . import ibm
-        yield ("IbmFm128Ss", ibm.ALL[0])
+        yield ("Ibm", ibm.ALL[0])
+    elif target == "Ibm":
+        from . import ibm
+        yield ("Ibm", ibm.ALL[0])
     elif target == "IntelIsis":
         from . import intel_isis
         yield ("IntelIsis", intel_isis.ALL[0])
@@ -87,7 +93,7 @@ def find_formats(target):
         from . import hp98xx
         yield ("HP9885", hp98xx.ALL[0])
         from . import ibm
-        yield ("IbmFm128Ss", ibm.ALL[0])
+        yield ("Ibm", ibm.ALL[0])
         from . import intel_isis
         yield ("IntelIsis", intel_isis.ALL[0])
         from . import q1_microlite

@@ -87,34 +87,42 @@ class ClockRecovery():
 class ClockRecoveryFM(ClockRecovery):
     ''' Classic FM '''
 
+    def __init__(self, rate = 50):
+        self.SPEC = {
+            rate: "-|",
+            rate*2: "---|",
+        }
+
 class ClockRecoveryMFM(ClockRecovery):
     ''' Classic MFM '''
 
-    SPEC = {
-        50: "-|",
-        75: "--|",
-        100: "---|",
-    }
+    def __init__(self, rate = 50):
+        self.SPEC = {
+            rate:      "-|",
+            3*rate//2: "--|",
+            2*rate:    "---|",
+        }
 
 class ClockRecoveryM2FM(ClockRecovery):
     ''' Classic M2FM '''
 
-    SPEC = {
-        50: "-|",
-        75: "--|",
-        100: "---|",
-        125: "----|",
-    }
+    def __init__(self, rate=50):
+        self.SPEC = {
+            rate:      "-|",
+            4*rate//2: "--|",
+            2*rate:    "---|",
+            5*rate//2: "----|",
+        }
 
 class FluxStream():
     ''' ... '''
 
-    fm_cache = None
-    mfm_cache = None
-    m2fm_cache = None
 
     def __init__(self):
         self.config_histogram()
+        self.fm_cache = {}
+        self.mfm_cache = {}
+        self.m2fm_cache = {}
 
     def serialize(self):
         return "-"
@@ -127,23 +135,23 @@ class FluxStream():
         self.histo = [0] * width
         self.histo_scale = scale
 
-    def fm_flux(self):
+    def fm_flux(self, rate=50):
         ''' Return FM flux string '''
-        if self.fm_cache is None:
-            self.fm_cache = ClockRecoveryFM().process(self.iter_dt())
-        return self.fm_cache
+        if rate not in self.fm_cache:
+            self.fm_cache[rate] = ClockRecoveryFM(rate).process(self.iter_dt())
+        return self.fm_cache[rate]
 
-    def mfm_flux(self):
+    def mfm_flux(self, rate=50):
         ''' Return MFM flux string '''
-        if self.mfm_cache is None:
-            self.mfm_cache = ClockRecoveryMFM().process(self.iter_dt())
-        return self.mfm_cache
+        if rate not in self.mfm_cache:
+            self.mfm_cache[rate] = ClockRecoveryMFM(rate).process(self.iter_dt())
+        return self.mfm_cache[rate]
 
-    def m2fm_flux(self):
+    def m2fm_flux(self, rate=50):
         ''' Return M2FM flux string '''
-        if self.m2fm_cache is None:
-            self.m2fm_cache = ClockRecoveryM2FM().process(self.iter_dt())
-        return self.m2fm_cache
+        if rate not in self.m2fm_cache:
+            self.m2fm_cache[rate] = ClockRecoveryM2FM(rate).process(self.iter_dt())
+        return self.m2fm_cache[rate]
 
     def flux_data_fm(self, flux):
         ''' Convert FM flux-string to data '''

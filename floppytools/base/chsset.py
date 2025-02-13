@@ -46,9 +46,9 @@ class CHSSet():
         self.chs = []
         self.summary = None
 
-    def add(self, chs):
+    def add(self, chs, payload=0):
         ''' add an entry in CHS format '''
-        self.chs.append(chs)
+        self.chs.append((*chs, payload))
 
     def __len__(self):
         return len(self.chs)
@@ -58,10 +58,28 @@ class CHSSet():
         cyls = set(chs[0] for chs in self.chs)
         return "c" + summarize_ints(cyls)
 
+    def seq(self):
+
+        wl = list([set([c,]),set([h,]),set([s,]),b] for c,h,s,b in sorted(self.chs))
+        for pivot in (2, 1, 0):
+            i = 0
+            while i < len(wl) - 1:
+                if wl[i][:pivot] != wl[i+1][:pivot] or wl[i][pivot+1:] != wl[i+1][pivot+1:]:
+                    i += 1
+                else:
+                   wl[i][pivot] |= wl[i+1][pivot]
+                   wl.pop(i+1)
+        for c, h, s, b in wl:
+            c = summarize_ints(c)
+            h = summarize_ints(h)
+            s = summarize_ints(s)
+            yield "c" + c + "h" + h + "s" + s + "b" + (str(b))
+
+
     def __iter__(self):
 
         wl = []
-        for c, h, s in sorted(self.chs):
+        for c, h, s, p in sorted(self.chs):
             if wl:
                 prev = wl[-1]
                 if len(prev[0]) == 1 and c in prev[0] and len(prev[1]) == 1 and h in prev[1]:
@@ -102,11 +120,15 @@ def main():
     for c in range(0, 5):
         for h in range(0, 2):
             for s in range(0, 8):
-                if h + s != 4:
+                if 1 or h + s != 4:
                     cs.add((c,h,s))
 
     print(len(cs))
     for i in cs:
+        print("\t", i)
+
+    print(len(cs))
+    for i in cs.seq():
         print("\t", i)
 
 if __name__ == "__main__":

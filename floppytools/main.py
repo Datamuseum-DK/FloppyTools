@@ -139,6 +139,7 @@ class Main():
             file.write(self.mdir.summary() + '\n')
             for i, j in self.mdir.missing():
                 file.write("\t" + i + " " + j + "\n")
+            self.mdir.write_result()
         self.mdir = None
 
     def mystatus(self, filename):
@@ -208,9 +209,10 @@ class Main():
 
         sys.stdout.write(self.esc_home + self.esc_eos)
         self.process_dir(dirname, sys.argv)
+        self.mypicture("")
         self.sync_media()
 
-    def report_incomplate(self):
+    def report_incomplete(self):
         ''' Report incomplete media '''
         l = []
         for dirname, defects in sorted(self.defects.items()):
@@ -253,7 +255,7 @@ class Main():
             m += 1
             if m == 3:
                 self.sync_media()
-                self.report_incomplate()
+                self.report_incomplete()
                 print()
                 print("Waiting for stream files…")
                 sys.stdout.flush()

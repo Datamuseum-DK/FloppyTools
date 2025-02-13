@@ -68,9 +68,11 @@ class Q1MicroLiteCommon(media.Media):
             j = i.split(self.DATA_PATTERN)
             # There must be a data part
             if len(j) < 2:
+                self.trace("SPLIT", len(i), [len(x) for x in j])
                 continue
             # Close to the address mark
             if len(j[0]) > self.GAPLEN:
+                self.trace("Too much gap", len(j[0]), self.GAPLEN)
                 continue
             yield j
 
@@ -152,7 +154,7 @@ class Q1MicroLiteCommon(media.Media):
         for i, j in todo:
             self.actually_do_catalog_entry(i, j)
 
-    def attempt_sector(self, chs, data, source, ms=None, sector_length=None, also_bad=False):
+    def attempt_sector(self, chs, data, stream, ms=None, sector_length=None, also_bad=False):
         good = True
         flags = []
         if ms:
@@ -183,7 +185,7 @@ class Q1MicroLiteCommon(media.Media):
             self.did_read_sector(
                 chs,
                 data[:sector_length],
-                source,
+                stream,
                 flags=flags,
             )
             if not self.defined_chs((0, 0, 0)):
@@ -196,7 +198,7 @@ class Q1MicroLiteCommon(media.Media):
     def sector_status(self, media_sector):
         i, j = media_sector.sector_status()
         unused = media_sector.has_flag("unused")
-        if j == '×' and unused:
+        if j == 'x' and unused:
             j = 'u'
         if j == '╬' and unused:
             j = 'ü'
@@ -212,7 +214,7 @@ class Q1MicroLiteCommon(media.Media):
         l.insert(1, self.cyl_contains[cyl_no].ljust(10))
         return l
 
-    def guess_sector_length(self, stream, later):
+    def guess_sector_length(self, stream, later, conv):
         # We dont know the sector lenght for this track (yet): Try to guess it
 
         # Find the most common flux-length for data part
@@ -225,7 +227,7 @@ class Q1MicroLiteCommon(media.Media):
         tens = []
         retval = False
         for chs, parts in later:
-            data = stream.flux_data_mfm(parts[1][:(common_length+2) * 16])
+            data = conv(parts[1][:(common_length+2) * 16])
             sectors.append((chs, data))
             ten_pos = data.rfind(b'\x10')
 
@@ -302,7 +304,7 @@ class Q1MicroLiteFM(Q1MicroLiteCommon):
             else:
                 later.append((chs, parts))
 
-        if later and self.guess_sector_length(stream, later):
+        if later and self.guess_sector_length(stream, later, stream.flux_data_fm):
             retval = True
         return retval
 
@@ -375,7 +377,7 @@ class Q1MicroLiteMFM28(Q1MicroLiteCommon):
             else:
                 later.append((chs, parts))
 
-        if later and self.guess_sector_length(stream, later):
+        if later and self.guess_sector_length(stream, later, stream.flux_data_mfm):
             retval = True
         return retval
 

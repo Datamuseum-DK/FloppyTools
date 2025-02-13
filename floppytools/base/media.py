@@ -9,6 +9,7 @@ import os
 
 from . import media_abc
 from . import kryostream
+from . import chsset
 
 class Media(media_abc.MediaAbc):
     ''' A Directory representing a Media '''
@@ -29,6 +30,7 @@ class Media(media_abc.MediaAbc):
             (True, open("_.trace", "a")),
             (False, open(self.file_name(".trace"), "a")),
         ]
+        print("DEFGEOM", type(self), self.GEOMETRY)
         if self.GEOMETRY is not None:
             self.define_geometry(*self.GEOMETRY)
 
@@ -145,3 +147,32 @@ class Media(media_abc.MediaAbc):
                 print("   ", line)
                 exit(2)
         self.trace("# cache read", self.cache_file_name())
+
+    def write_result(self):
+        geom = chsset.CHSSet()
+        stretch = {}
+        for ms in sorted(self.sectors.values()):
+            ch = ms.chs[:2]
+            if ch not in stretch:
+                stretch[ch] = []
+            stretch[ch].append(ms)
+            if ms.has_flag("defined"):
+                geom.add(ms.chs, ms.sector_length)
+            else:
+                maj = ms.find_majority()
+                if maj:
+                    geom.add(ms.chs, len(maj))
+                else:
+                    geom.add(ms.chs, 0)
+        print("Geom", self.name)
+        #for i in geom.seq():
+            # print("G", i)
+        for s, v in stretch.items():
+            slo = min(x.chs[2] for x in v)
+            shi = max(x.chs[2] for x in v)
+            #print("S", s, slo, shi, len(v))
+        return
+        fn = self.file_name(".bin")
+        with open(fn, "wb") as file:
+           file.write(b'boo')
+        return "BIN", fn
