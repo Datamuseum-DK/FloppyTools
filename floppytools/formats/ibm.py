@@ -78,8 +78,8 @@ class IbmMfmTrack(IbmTrack):
     DATA_MARK = ((0x0a, 0xa1), (0x0a, 0xa1), (0x0a, 0x0a1), (0x00, 0xfb))
     DATA_PATTERN = SYNC + ''.join(fs.make_mark(*i) for i in DATA_MARK)
 
-    DELETE_MARK = ((0x0a, 0xa1), (0x0a, 0xa1), (0x0a, 0x0a1), (0x00, 0xf8))
-    DELETE_PATTERN = SYNC + ''.join(fs.make_mark(*i) for i in DATA_MARK)
+    DELETE_MARK = ((0x0a, 0xa1), (0x0a, 0xa1), (0x0a, 0x0a1), (0x03, 0xf8))
+    DELETE_PATTERN = SYNC + ''.join(fs.make_mark(*i) for i in DELETE_MARK)
 
     MAX_GAP2 = 60
 
