@@ -196,7 +196,8 @@ class Q1MicroLiteCommon(media.Media):
         return good
 
     def sector_status(self, media_sector):
-        i, j = media_sector.sector_status()
+        x = media_sector.sector_status()
+        i, j, k = media_sector.sector_status()
         unused = media_sector.has_flag("unused")
         if j == 'x' and unused:
             j = 'u'
@@ -204,7 +205,7 @@ class Q1MicroLiteCommon(media.Media):
             j = 'ü'
         if unused:
             i = True
-        return i, j
+        return i, j, k
 
     def picture(self, *args, **kwargs):
         yield from self.picture_sec_x(*args, **kwargs)
