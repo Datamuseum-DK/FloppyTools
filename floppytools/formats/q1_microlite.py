@@ -18,7 +18,7 @@
    Synchronization is (64?) zeros, 3½ bit times with a clock-violation,
    followed by either 0x9e (address-mark) or 0x9b (data)
 
-   The error check is a trivial byte checksum, followed by 0x10.
+   The error check is a trivial byte checksum.
    For address-marks the 0x9e is not included, for data the 0x9b is.
 
    Track zero has 40 byte sectors, each of which contains the catalog
@@ -68,7 +68,7 @@ class Q1MicroLiteCommon(media.Media):
             j = i.split(self.DATA_PATTERN)
             # There must be a data part
             if len(j) < 2:
-                self.trace("SPLIT", len(i), [len(x) for x in j])
+                self.trace("no DATA_PATTERN", len(i), [len(x) for x in j])
                 continue
             # Close to the address mark
             if len(j[0]) > self.GAPLEN:
@@ -120,7 +120,10 @@ class Q1MicroLiteCommon(media.Media):
         if chs not in self.catalog_entries:
             self.trace("CATALOG", "%2d,%3d" % (chs[0], chs[2]), flds)
             self.catalog_entries[chs] = flds
-        assert last < 77
+        if last >= 80:
+            self.trace("LAST", str(last))
+            return
+       
         for cyl in range(first, last +1):
             self.cyl_contains[cyl] = name.decode('ascii')
             for sect in range(0, nsect):
@@ -170,11 +173,6 @@ class Q1MicroLiteCommon(media.Media):
         elif ms and ms.has_flag('unused'):
             good=True
             flags.append("unused")
-        elif data[sector_length + 1] != 0x10:
-            if ms:
-                self.trace(chs, "no 0x10", data[sector_length + 1], data.hex())
-            good=False
-            flags.append("No10")
         elif not self.good_checksum(data, sector_length):
             if ms:
                 self.trace(chs, "bad checksum", data.hex())
@@ -244,6 +242,24 @@ class Q1MicroLiteCommon(media.Media):
                     retval = True
         return retval
 
+    def metadata_media_description(self):
+        yield ""
+        yield "Catalog Entries:"
+        yield "\tName      Used  Rec-Len  Alloc  Tracks"
+        yield "\t--------  ----  -------  -----  ------"
+        for i, j in sorted(self.catalog_entries.items()):
+            l = [
+                j[1].decode('ascii').ljust(8),
+                "",
+                "%4d" % j[2],
+                "",
+                "%7d" % j[3],
+                "",
+                "%5d" % j[4],
+                "",
+                ("%d-%d" % (j[5], j[6])).rjust(6),
+            ]
+            yield "\t" + " ".join(l)
 
 class Q1MicroLiteFM(Q1MicroLiteCommon):
     '''
