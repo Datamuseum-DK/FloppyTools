@@ -18,6 +18,9 @@ documentation = {
     "IntelIsis": [
         ['Intel ISIS format 8" floppy disks'],
     ],
+    "OhioScientific": [
+        ['Ohio Scientific'],
+    ],
     "Q1MicroLiteFM": [
         ['Q1 Corporation MicroLite FM format floppy disks\n\n\tBla\n\n\tFOo'],
     ],
@@ -65,6 +68,9 @@ def find_formats(target):
     elif target == "IntelIsis":
         from . import intel_isis
         yield ("IntelIsis", intel_isis.ALL[0])
+    elif target == "OhioScientific":
+        from . import ohio_scientific
+        yield ("OhioScientific", ohio_scientific.ALL[0])
     elif target == "Q1":
         from . import q1_microlite
         yield ("Q1MicroLiteMFM28", q1_microlite.ALL[0])
@@ -96,6 +102,8 @@ def find_formats(target):
         yield ("Ibm", ibm.ALL[0])
         from . import intel_isis
         yield ("IntelIsis", intel_isis.ALL[0])
+        from . import ohio_scientific
+        yield ("OhioScientific", ohio_scientific.ALL[0])
         from . import q1_microlite
         yield ("Q1MicroLiteMFM28", q1_microlite.ALL[0])
         yield ("Q1MicroLiteMFM39", q1_microlite.ALL[1])
