@@ -20,6 +20,16 @@ def ranges(numbers):
     if diff is not None:
         yield first,last
 
+def make_ranges(data):
+    for low, high in ranges(data):
+        if low == high:
+            yield low, low
+        elif low + 1 == high:
+            yield low, low
+            yield high, high
+        else:
+            yield low, high
+
 def summarize_ints(data):
     '''
        Summarize a sequence of integers using intervals
@@ -30,17 +40,38 @@ def summarize_ints(data):
            [3,4,5,]			"{3-5}"
            [1,2,3,4,5,6,8,9,12,13,14]   "{1-6,8,9,12-14}"
            [1,2,3,4,5,6,9,12,13,14]     "{1-6,9,12-14}"
+           [2,4,6,8]                    "{2-8/2}"
+           [1,3,5,7]                    "{1-7/2}"
     '''
+
+    # Special trivial case
+    if len(data) == 1:
+        return "{" + str(list(data)[0]) + "}"
+
     l = []
-    for low, high in ranges(data):
+    for low, high in make_ranges(data):
         if low == high:
             l.append(str(low))
-        elif low + 1 == high:
-            l.append(str(low))
-            l.append(str(high))
         else:
             l.append(str(low) + "-" + str(high))
-    return "{" + ",".join(l) + "}"
+
+    # It helped & we're done
+    if len(l) < len(data):
+        return "{" + ",".join(l) + "}"
+
+    # Special case all-even and all-odd data
+    sex = set(x & 1 for x in data)
+    if len(sex) != 1:
+        return "{" + ",".join(l) + "}"
+
+    sex = list(sex)[0]
+    l = []
+    for low, high in make_ranges(x // 2 for x in data):
+        if low == high:
+            l.append(str(low * 2 + sex))
+        else:
+            l.append(str(low * 2 + sex) + "-" + str(high * 2 + sex))
+    return "{" + ",".join(l) + "/2}"
 
 class Cluster():
     ''' Some group of sectors '''
@@ -124,6 +155,8 @@ class CHSSet():
 
     def add(self, chs, payload=0):
         ''' add an entry in CHS format '''
+        if payload is None:
+            payload = 0
         self.chs.append((*chs, payload))
         self.clusters = None
 
@@ -172,13 +205,14 @@ class CHSSet():
     def __iter__(self):
 
         wl = []
-        for c, h, s, _p in sorted(self.chs):
+        for c, h, s, p in sorted(self.chs):
             if wl:
                 prev = wl[-1]
                 if len(prev[0]) == 1 and c in prev[0] and len(prev[1]) == 1 and h in prev[1]:
                     prev[2].add(s)
+                    prev[3].add(p)
                     continue
-            wl.append([set((c,)), set((h,)), set((s,))])
+            wl.append([set((c,)), set((h,)), set((s,)), set((p,))])
         i = 0
         while i < len(wl) -1:
             if wl[i][0] == wl[i+1][0] and wl[i][2] == wl[i+1][2]:
@@ -187,7 +221,7 @@ class CHSSet():
             else:
                 i += 1
         while wl:
-            c, h, s = wl.pop(0)
+            c, h, s, p = wl.pop(0)
             i = 0
             while i < len(wl):
                 if wl[i][1] == h and wl[i][2] == s:
@@ -198,7 +232,8 @@ class CHSSet():
             c = summarize_ints(c)
             h = summarize_ints(h)
             s = summarize_ints(s)
-            yield "c" + c + "h" + h + "s" + s
+            p = summarize_ints(p)
+            yield "c" + c + "h" + h + "s" + s + "b" + p
 
 def main():
     ''' Test code '''
@@ -207,6 +242,8 @@ def main():
     print(summarize_ints([3,4,5,]))
     print(summarize_ints([1,2,3,4,5,6,9,12,13,14]))
     print(summarize_ints([1,2,3,4,5,6,8,9,12,13,14]))
+    print(summarize_ints([2,4,6,8,12,14,16,20]))
+    print(summarize_ints([1,3,5,7,11,13,15,19]))
 
     cs = CHSSet()
 
