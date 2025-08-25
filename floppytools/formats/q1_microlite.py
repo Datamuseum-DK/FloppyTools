@@ -181,9 +181,10 @@ class Q1MicroLiteCommon(media.Media):
 
         if good:
             self.did_read_sector(
+                stream,
+                "0",
                 chs,
                 data[:sector_length],
-                stream,
                 flags=flags,
             )
             if not self.defined_chs((0, 0, 0)):

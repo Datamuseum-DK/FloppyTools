@@ -45,7 +45,7 @@ class ZilogMCZ(media.Media):
             if not self.defined_chs(chs):
                 continue
 
-            self.did_read_sector(chs, data[:-2], stream)
+            self.did_read_sector(stream, data_pos, chs, data[:-2])
             retval = True
         return retval
 

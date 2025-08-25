@@ -17,7 +17,7 @@ class IbmTrack():
 
 class IbmFmTrack(IbmTrack):
 
-    GAP1 = 16
+    GAP1 = 4
     SYNC = '|---' * GAP1
 
     FM_ADDRESS_MARK = (0xc7, 0xfe)
@@ -31,41 +31,61 @@ class IbmFmTrack(IbmTrack):
 
     MAX_GAP2 = 100
 
-    def process_stream(self, media, stream, clock=50):
+    def process_stream(self, thismedia, stream, clock=50):
         flux = stream.fm_flux(clock)
         for am_pos in stream.iter_pattern(flux, pattern=self.AM_PATTERN):
             address_mark = stream.flux_data_fm(flux[am_pos-32:am_pos+(6*32)])
             if address_mark is None:
-                media.trace("NOAM", am_pos)
+                thismedia.trace("NOAM", am_pos)
                 continue
             am_crc = crc_func(address_mark)
             if am_crc != 0:
-                media.trace("AMCRC", am_pos, address_mark.hex())
-                continue
-            chs = (address_mark[1], address_mark[2], address_mark[3])
+                thismedia.trace("AMCRC", am_pos, address_mark.hex())
+                chs = (address_mark[1], address_mark[2], address_mark[3])
+            else:
+                chs = (address_mark[1], address_mark[2], address_mark[3])
             sector_size = 128 << address_mark[4]
-            extra = [ "FM", "clock=%d" % clock]
+            extra = [ "mode=FM", "clock=%d" % clock]
             data_pos = flux.find(self.DATA_PATTERN, am_pos, am_pos + self.MAX_GAP2 * 32)
             if data_pos < 0:
                 data_pos = flux.find(self.DELETE_PATTERN, am_pos, am_pos + self.MAX_GAP2 * 32)
                 if data_pos >= 0:
                     extra.append("deleted")
             if data_pos < 0:
-                media.trace("NOFLAG", am_pos)
+                thismedia.trace(
+                    "NOFLAG",
+                    "%10d" % am_pos,
+                    address_mark.hex(),
+                    flux[am_pos:am_pos + 6000]
+                )
                 continue
 
             data_pos += len(self.DATA_PATTERN)
             data = stream.flux_data_fm(flux[data_pos-32:data_pos+((2+sector_size)*32)])
             if data is None:
-                media.trace("NODATA", am_pos)
+                thismedia.trace("NODATA", am_pos)
                 continue
 
             data_crc = crc_func(data)
             if data_crc:
-                media.trace("DATACRC", am_pos, address_mark.hex(), hex(data_crc), len(data), data.hex())
+                thismedia.trace(
+                    "DATACRC",
+                    "%10d" % am_pos,
+                    address_mark.hex(),
+                    hex(data_crc),
+                    len(data),
+                    data.hex()
+                )
+                thismedia.trace(
+                    "FLUX",
+                    "%10d" % am_pos,
+                    address_mark.hex(),
+                    flux[am_pos:am_pos + 6000]
+                    # flux[data_pos-32:data_pos+(8+sector_size*32)]
+                )
                 continue
 
-            yield chs, data[1:1+sector_size], extra
+            yield am_pos, chs, data[1:1+sector_size], extra
 
 class IbmMfmTrack(IbmTrack):
 
@@ -83,27 +103,27 @@ class IbmMfmTrack(IbmTrack):
 
     MAX_GAP2 = 60
 
-    def process_stream(self, media, stream, clock=50):
+    def process_stream(self, thismedia, stream, clock=50):
         flux = stream.mfm_flux(clock)
         for am_pos in stream.iter_pattern(flux, pattern=self.AM_PATTERN):
             address_mark = stream.flux_data_mfm(flux[am_pos-64:am_pos+(6*16)])
             if address_mark is None:
-                media.trace("NOAM", am_pos)
+                thismedia.trace("NOAM", am_pos)
                 continue
             am_crc = crc_func(address_mark)
             if am_crc != 0:
-                media.trace("AMCRC", am_pos)
+                thismedia.trace("AMCRC", am_pos)
                 continue
             chs = (address_mark[4], address_mark[5], address_mark[6])
 
-            extra = [ "MFM", "clock=%d" % clock]
+            extra = [ "mode=MFM", "clock=%d" % clock]
             data_pos = flux.find(self.DATA_PATTERN, am_pos + 20 * 16, am_pos + self.MAX_GAP2 * 16)
             if data_pos < 0:
                 data_pos = flux.find(self.DELETE_PATTERN, am_pos, am_pos + self.MAX_GAP2 * 16)
                 if data_pos >= 0:
                     extra.append("deleted")
             if data_pos < 0:
-                media.trace("NOFLAG", am_pos)
+                thismedia.trace("NOFLAG", am_pos)
                 continue
             data_pos += len(self.DATA_PATTERN)
 
@@ -113,16 +133,16 @@ class IbmMfmTrack(IbmTrack):
             width = (6 + sector_size) * 16
             data = stream.flux_data_mfm(flux[data_pos+off:data_pos+width+off])
             if data is None:
-                media.trace("NODATA", am_pos)
+                thismedia.trace("NODATA", am_pos)
                 continue
 
             data_crc = crc_func(data)
 
             if data_crc != 0:
-                media.trace("DATACRC", am_pos, len(data), hex(data_crc), data[:32].hex())
+                thismedia.trace("DATACRC", am_pos, len(data), hex(data_crc), data[:32].hex())
                 continue
 
-            yield chs, data[4:4+sector_size], extra
+            yield am_pos, chs, data[4:4+sector_size], extra
 
 class Ibm(media.Media):
 
@@ -153,13 +173,14 @@ class Ibm(media.Media):
         ''' ...  '''
 
         retval = False
-        for i in range(len(self.todo)):
+        for _i in range(len(self.todo)):
             track, clock = self.todo[0]
-            for chs, data, extra in track.process_stream(self, stream, clock):
+            for rel_pos, chs, data, extra in track.process_stream(self, stream, clock):
                 self.did_read_sector(
+                    stream,
+                    rel_pos,
                     chs,
                     data,
-                    stream,
                     flags=extra,
                 )
                 retval = True

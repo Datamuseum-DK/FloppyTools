@@ -83,7 +83,7 @@ class HP9885(media.Media):
 		        txt
 	            )
 
-                self.did_read_sector((am[0], 0, am[1]), data[:self.SECTOR_SIZE], stream )
+                self.did_read_sector(stream, am_pos, (am[0], 0, am[1]), data[:self.SECTOR_SIZE])
                 retval = True
             prev = am_pos
         return retval

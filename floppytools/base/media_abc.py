@@ -11,14 +11,21 @@ from collections import Counter
 class ReadSector():
     ''' One reading of a sector '''
 
-    def __init__(self, chs, octets, source, flags=(), good=True,):
-        assert len(chs) == 3
-        self.chs = chs
+    def __init__(self, source, rel_pos, am_chs, octets, flags=(), good=True, phys_chs=None):
+        assert len(am_chs) == 3
+        if phys_chs is None:
+            phys_chs = source.chs
+        self.rel_pos = rel_pos
+        self.am_chs = am_chs
+        self.phys_chs = (phys_chs[0], phys_chs[1], am_chs[2])
         self.octets = octets
+
+        # we dont want to hold on to the source and all it's bits
         if hasattr(source, "serialize"):
             self.source = source.serialize()
         else:
             self.source = str(source)
+
         self.good = good
         self.flags = set(flags)
         if not good:
@@ -37,9 +44,11 @@ class MediaSector():
 
     ''' What we know about a sector on the media '''
 
-    def __init__(self, chs, sector_length=None):
-        assert len(chs) == 3
-        self.chs = chs
+    def __init__(self, am_chs, phys_chs, sector_length=None):
+        assert len(am_chs) == 3
+        assert len(phys_chs) == 3
+        self.am_chs = am_chs
+        self.phys_chs = (phys_chs[0], phys_chs[1], am_chs[2])
         self.readings = []
         self.values = {}
         self.sector_length = sector_length
@@ -48,10 +57,10 @@ class MediaSector():
         self.status_cache = {}
 
     def __str__(self):
-        return str(("MediaSector", self.chs, self.sector_length, self.flags))
+        return str(("MediaSector", self.phys_chs, self.sector_length, self.flags))
 
     def __lt__(self, other):
-        return self.chs < other.chs
+        return self.phys_chs < other.phys_chs
 
     def set_flag(self, flag):
         self.flags.add(flag)
@@ -62,7 +71,8 @@ class MediaSector():
     def add_read_sector(self, read_sector):
         ''' Add a reading of this sector '''
 
-        assert read_sector.chs == self.chs
+        assert read_sector.am_chs == self.am_chs
+        assert read_sector.phys_chs == self.phys_chs
         self.readings.append(read_sector)
         i = self.values.get(read_sector.octets)
         if i is None:
@@ -70,6 +80,10 @@ class MediaSector():
             self.values[read_sector.octets] = i
         i.append(read_sector)
         self.lengths.add(len(read_sector.octets))
+        if len(self.lengths) == 1:
+            self.sector_length = len(read_sector.octets)
+        else:
+            self.sector_length = None
         self.status_cache = {}
 
     def find_majority(self):
@@ -167,20 +181,21 @@ class MediaAbc():
         return ms
 
     def add_read_sector(self, rs):
-        assert len(rs.chs) == 3
-        if rs.chs not in self.sectors:
-            self.sectors[rs.chs] = MediaSector(rs.chs)
-        self.sectors[rs.chs].add_read_sector(rs)
-        self.cyl_no.add(rs.chs[0])
-        self.hd_no.add(rs.chs[1])
-        self.sec_no.add(rs.chs[2])
+        assert len(rs.am_chs) == 3
+        assert len(rs.phys_chs) == 3
+        if rs.phys_chs not in self.sectors:
+            self.sectors[rs.phys_chs] = MediaSector(rs.am_chs, rs.phys_chs)
+        self.sectors[rs.phys_chs].add_read_sector(rs)
+        self.cyl_no.add(rs.phys_chs[0])
+        self.hd_no.add(rs.phys_chs[1])
+        self.sec_no.add(rs.phys_chs[2])
         self.lengths.add(len(rs))
         self.status_cache = {}
 
     def define_sector(self, chs, sector_length=None):
         ms = self.sectors.get(chs)
         if ms is None:
-            ms = MediaSector(chs, sector_length)
+            ms = MediaSector(chs, chs, sector_length)
             self.sectors[chs] = ms
         if not ms.has_flag("defined"):
             ms.sector_length = sector_length
@@ -317,9 +332,9 @@ class MediaAbc():
                     goodset.add(ms.chs)
                 elif i:
                     nextra += 1
-                    goodset.add(ms.chs)
+                    goodset.add(ms.phys_chs, payload=ms.sector_length)
                 else:
-                    badset.add(ms.chs)
+                    badset.add(ms.phys_chs)
                     if j not in badones:
                         badones[j] = []
                     badones[j].append(ms)

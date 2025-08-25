@@ -65,7 +65,7 @@ class IntelIsis(media.Media):
             if data_crc:
                 continue
 
-            self.did_read_sector(chs, data[1:self.SECTOR_SIZE+1], stream)
+            self.did_read_sector(stream, am_pos, chs, data[1:self.SECTOR_SIZE+1])
             retval = True
         return retval
 

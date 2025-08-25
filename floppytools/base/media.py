@@ -12,6 +12,7 @@ import time
 from . import media_abc
 from . import kryostream
 from . import chsset
+from . import cache_file
 
 class Media(media_abc.MediaAbc):
     ''' A Directory representing a Media '''
@@ -40,7 +41,7 @@ class Media(media_abc.MediaAbc):
         if load_cache:
             self.read_cache()
         if save_cache:
-            self.cache_file = open(self.cache_file_name(), "a", encoding="utf8")
+            self.cache_file = cache_file.CacheFile(self.cache_file_name(), "a")
 
     def define_geometry(self, first_chs, last_chs, sector_size):
         ''' Define which sectors we expect to find '''
@@ -83,9 +84,8 @@ class Media(media_abc.MediaAbc):
             fn.write(txt + "\n")
             fn.flush()
 
-    def did_read_sector(self, chs, octets, source, flags=()):
-        chs = (chs[0], chs[1], chs[2])
-        rs = media_abc.ReadSector(chs, octets, source, flags)
+    def did_read_sector(self, source, rel_pos, am_chs, octets, flags=()):
+        rs = media_abc.ReadSector(source, rel_pos, am_chs, octets, flags)
         self.add_read_sector(rs)
 
     def add_read_sector(self, read_sector):
@@ -93,15 +93,7 @@ class Media(media_abc.MediaAbc):
         super().add_read_sector(read_sector)
         if not self.cache_file:
             return
-        l = ["sector", read_sector.source]
-        l += ["%d,%d,%d" % read_sector.chs]
-        l += [read_sector.octets.hex()]
-        if not read_sector.flags:
-            l += ["-"]
-        else:
-            l += [",".join(sorted(read_sector.flags))]
-        self.cache_file.write(" ".join(l) + "\n")
-        self.cache_file.flush()
+        self.cache_file.write_sector(read_sector)
 
     def process_file(self, streamfilename):
         ''' ... '''
@@ -124,38 +116,21 @@ class Media(media_abc.MediaAbc):
             for i in stream.dt_histogram():
                 self.trace(i)
         if self.cache_file:
-            self.cache_file.write("file " + rel_filename + "\n")
-            self.cache_file.flush()
+            self.cache_file.write_file(rel_filename)
         return retval
 
-    def read_cache_lines(self):
+    def read_cache(self):
         try:
-            with open(self.cache_file_name(), "r", encoding="utf8") as file:
-                for line in file:
-                    flds = line.split()
-                    if len(flds) < 2 or flds[0][0] == '#':
-                        continue
-                    yield flds
+             for kind, obj in cache_file.CacheFile(self.cache_file_name(), "r").read():
+                 if kind == "file":
+                     self.files_done.add(obj)
+                 elif kind == "sector":
+                     self.add_read_sector(obj)
+                 else:
+                     assert False
+             self.trace("# cache read", self.cache_file_name())
         except FileNotFoundError:
             return
-
-    def read_cache(self):
-        for flds in self.read_cache_lines():
-            if flds[0] == "file":
-                self.files_done.add(flds[1])
-            elif flds[0] == "sector":
-                chs = tuple(int(x) for x in flds[2].split(","))
-                octets = bytes.fromhex(flds[3])
-                if flds[4] != '-':
-                    flags = flds[4].split(',')
-                else:
-                    flags = []
-                self.did_read_sector(chs, octets, flds[1], flags)
-            else:
-                print("Invalid cache line")
-                print("   ", line)
-                exit(2)
-        self.trace("# cache read", self.cache_file_name())
 
     def metadata_media_description(self):
         yield from []

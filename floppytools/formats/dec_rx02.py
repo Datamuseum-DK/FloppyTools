@@ -74,7 +74,7 @@ class DecRx02(media.Media):
             data = bytes([0xfd]) + self.flux_to_bytes(data_flux[1:])
 
             data_crc = crc_func(data)
-            self.did_read_sector(chs, data[1:self.SECTOR_SIZE+1], stream)
+            self.did_read_sector(stream, am_pos, chs, data[1:self.SECTOR_SIZE+1])
             retval = True
         return retval
 

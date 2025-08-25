@@ -29,6 +29,7 @@ class Main():
         self.ignore_cache = False
         self.just_try = False
         self.end_when_complete = False
+        self.metaproto = ""
         format_names = []
         ttymode = os.isatty(sys.stdout.fileno())
         sys.argv.pop(0)
@@ -37,8 +38,8 @@ class Main():
                 self.ignore_cache = True
                 sys.argv.pop(0)
             elif sys.argv[0] == '-d':
-                run_mode = self.dir_mode
                 sys.argv.pop(0)
+                run_mode = self.dir_mode
             elif sys.argv[0] == '-e':
                 self.end_when_complete = True
                 sys.argv.pop(0)
@@ -57,9 +58,15 @@ class Main():
             elif sys.argv[0] == '-n':
                 sys.argv.pop(0)
                 self.just_try = True
+            elif sys.argv[0] == "-p":
+                sys.argv.pop(0)
+                self.metaproto = open(sys.argv.pop(0)).read()
             elif sys.argv[0] == '-t':
                 sys.argv.pop(0)
                 ttymode = True
+            elif sys.argv[0] == '-w':
+                sys.argv.pop(0)
+                run_mode = self.write_mode
             elif sys.argv[0][0] == '-':
                 print("Unknown flag", sys.argv[0])
                 self.usage()
@@ -129,17 +136,16 @@ class Main():
         ''' Close a media directory '''
         if not self.mdir:
             return
-        self.defects[self.mdir.medianame] = self.mdir.summary()
+        self.defects[self.mdir.medianame] = self.mdir.summary(long=True)
         with open(self.mdir.file_name(".status"), "w", encoding="utf8") as file:
             file.write("Dirname " + self.mdir.medianame + "\n")
             for i in self.mdir.picture():
                 file.write(i + '\n')
             for i in sorted(self.mdir.messages):
                 file.write(i + '\n')
-            file.write(self.mdir.summary() + '\n')
+            file.write(self.mdir.summary(long=True) + '\n')
             for i, j in self.mdir.missing():
                 file.write("\t" + i + " " + j + "\n")
-            self.mdir.write_result()
         self.mdir = None
 
     def mystatus(self, filename):
@@ -153,6 +159,8 @@ class Main():
         self.mystatus(filename)
         for line in self.mdir.picture():
             print(line + self.esc_eol)
+        for line in self.mdir.summary(long=True).split('\n'):
+            print(self.esc_eol + line)
         sys.stdout.write(self.esc_eos)
 
     def process_file(self, filename):
@@ -178,7 +186,6 @@ class Main():
                         load_cache = not self.ignore_cache,
                         save_cache = not self.just_try,
                     )
-
                     self.process_file(fn)
                     if self.mdir.any_good():
                         break
@@ -209,7 +216,8 @@ class Main():
 
         sys.stdout.write(self.esc_home + self.esc_eos)
         self.process_dir(dirname, sys.argv)
-        self.mypicture("")
+        if self.mdir:
+            self.mypicture("")
         self.sync_media()
 
     def report_incomplete(self):
@@ -217,19 +225,7 @@ class Main():
         l = []
         for dirname, defects in sorted(self.defects.items()):
             if 'COMPLETE' not in defects:
-                l.append([dirname] + defects.split())
-        if not l:
-            return
-        print()
-        w = [0] * max(len(x) for x in l)
-        for x in l:
-            for n, y in enumerate(x):
-                w[n] = max(w[n], len(y))
-        for row in l:
-            x = []
-            for width, datum in zip(w, row):
-                x.append(datum.ljust(width))
-            print("  ", " ".join(x))
+                print(dirname, defects)
 
     def monitor_mode(self):
         ''' Monitor a directory while media are being read '''
@@ -286,3 +282,11 @@ class Main():
             st = os.stat(fn)
             if st.st_mtime + COOLDOWN < time.time():
                 yield fn
+
+    def write_mode(self):
+        ''' Write files for the bitstore '''
+        for dirname in sys.argv:
+            for cls in self.format_classes.values():
+                mdir = cls(dirname, load_cache = True, save_cache = False)
+                if mdir.any_good():
+                    mdir.write_result(metaproto=self.metaproto)

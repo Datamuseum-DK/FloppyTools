@@ -145,9 +145,10 @@ class OhioScientific(media.Media):
                     if len(data) < 0xf00:
                         data += bytes(0 for x in range(0xf00 - len(data)))
                     self.did_read_sector(
+                        stream,
+                        bi,
                         (data[2], 0, 0),
                         bytes(data),
-                        stream,
                     )
                     retval = True
                 else:
@@ -173,9 +174,10 @@ class OhioScientific(media.Media):
                 if len(data) < 0xf00:
                     data += bytes(0 for x in range(0xf00 - len(data)))
                 self.did_read_sector(
+                    stream,
+                    bi,
                     (0, 0, 0),
                     bytes(data),
-                    stream,
                     flags=["boot"]
                 )
                 retval = True

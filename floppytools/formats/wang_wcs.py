@@ -57,7 +57,7 @@ class WangWcs(media.Media):
             if data_crc:
                 continue
 
-            self.did_read_sector(chs, data[:self.SECTOR_SIZE], stream)
+            self.did_read_sector(stream, am_pos, chs, data[:self.SECTOR_SIZE])
             retval = True
         return retval
 
