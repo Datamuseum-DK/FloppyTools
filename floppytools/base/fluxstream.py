@@ -109,7 +109,7 @@ class ClockRecoveryM2FM(ClockRecovery):
     def __init__(self, rate=50):
         self.SPEC = {
             rate:      "-|",
-            4*rate//2: "--|",
+            3*rate//2: "--|",
             2*rate:    "---|",
             5*rate//2: "----|",
         }
