@@ -11,6 +11,9 @@ class OhioScientific(media.Media):
 
     ''' Ohio Scientific '''
 
+    SECTOR_SIZE = 0xf << 8
+    GEOMETRY = ((0, 0, 0), (76, 0, 0), SECTOR_SIZE)
+
     def process_stream(self, stream):
         retval = False
 
