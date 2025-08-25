@@ -93,7 +93,7 @@ class MediaSector():
         self.status_cache["majority"] = retval
         return retval
 
-    def real_sector_status(self):
+    def real_sector_status(self, vert=False):
         ''' Report status and visual aid '''
 
         if len(self.values) == 0:
@@ -109,14 +109,18 @@ class MediaSector():
                 return False, '>', len(maj)
             if len(k) < self.sector_length:
                 return False, '<', len(maj)
-        return True, "×▁▂▃▄▅▆▇█"[min(len(self.readings), 7)], len(maj)
+        if vert:
+            #             01234567
+            return True, "×▏▎▌▋▊▉█"[min(len(self.readings), 7)], len(maj)
+        else:
+            return True, "×▁▂▃▄▅▆▇█"[min(len(self.readings), 8)], len(maj)
 
-    def sector_status(self):
+    def sector_status(self, **kwargs):
         ''' Report status and visual aid '''
 
         i = self.status_cache.get("sector")
         if not i:
-            i = self.real_sector_status()
+            i = self.real_sector_status(**kwargs)
             self.status_cache["sector"] = i
         return i
 
@@ -139,6 +143,7 @@ class MediaAbc():
         self.messages = set()
         self.n_expected = 0
         self.status_cache = {}
+        self.goodset = set()
 
     def __str__(self):
         return "{MEDIA " + self.__class__.__name__ + " " + self.name + "}"
@@ -193,10 +198,15 @@ class MediaAbc():
         return ms
 
     def picture(self):
-        yield from self.picture_sec_x()
+        if not self.hd_no or not self.cyl_no:
+            return
+        if max(self.sec_no) > 32:
+            yield from self.picture_sec_x()
+        else:
+            yield from self.picture_sec_y()
 
-    def sector_status(self, media_sector):
-        return media_sector.sector_status()
+    def sector_status(self, media_sector, **kwargs):
+        return media_sector.sector_status(**kwargs)
 
     def pic_sec_x_line(self, cyl_no, head_no):
         l = []
@@ -223,9 +233,29 @@ class MediaAbc():
             l.insert(1, " " * 9)
         return l
 
+    def pic_sec_y_line(self, head_no, sec_no):
+        l = []
+        l.append("%2d " % sec_no)
+        lens = []
+        nsec = 0
+        for cyl_no in range(min(self.cyl_no), max(self.cyl_no) + 1):
+            ms = self.sectors.get((cyl_no, head_no, sec_no))
+            if ms is None:
+                l.append(' ')
+            else:
+                nsec += 1
+                _i, j, k = self.sector_status(ms, vert=True)
+                l.append(j)
+                if k is not None:
+                    lens.append(k)
+        return l
+        if lens:
+            i = Counter(lens).most_common()
+            l.insert(1, ("%d*%d" % (nsec, i[0][0])).ljust(9))
+        else:
+            l.insert(1, " " * 9)
+
     def picture_sec_x(self):
-        if not self.hd_no or not self.cyl_no:
-            return
         l = []
         for cyl_no in range(min(self.cyl_no), max(self.cyl_no) + 1):
             l.append(list())
@@ -240,6 +270,23 @@ class MediaAbc():
                 x.append(col.ljust(width + 3))
             yield "".join(x).rstrip()
 
+    def picture_sec_y(self):
+        l1 = []
+        l2 = []
+        for cyl_no in range(min(self.cyl_no), max(self.cyl_no) + 1):
+            l2.append("%d" % (cyl_no % 10))
+            if l2[-1] == '0':
+                l1.append("%d" % (cyl_no // 10))
+            else:
+                l1.append(" ")
+
+ 
+        for hd_no in sorted(self.hd_no):
+            yield "   " + "".join(l1)
+            yield "h%d " % hd_no + "".join(l2)
+            for sec_no in range(min(self.sec_no), max(self.sec_no) + 1):
+                yield "".join(self.pic_sec_y_line(hd_no, sec_no))
+
     def missing(self):
         why = {}
         for ms in self.sectors.values():
@@ -253,7 +300,7 @@ class MediaAbc():
             for x in j:
                 yield i, x
 
-    def summary(self):
+    def summary(self, long=False):
         retval = self.status_cache.get("summary")
         if retval is None:
             ngood = 0
@@ -283,24 +330,29 @@ class MediaAbc():
                 if nextra:
                     l.append("EXTRA")
             else:
-                if not self.n_expected and not badones:
-                    l.append("SOMETHING")
-                    l.append("")
-                    for x in goodset:
-                        if len(l[-1]) + len(x) < 64:
-                            l[-1] += "," + x
-                        else:
-                            l[-1] += "[…]"
-                            break
-                    l[-1] = l[-1][1:]
-                else:
-                    l.append("MISSING")
-                    l.append(badset.cylinders())
-                l.append("✓: %d" % ngood)
-                for c in sorted(badones):
-                    l.append(c + ": %d" % len(badones[c]))
+                l.append("✓: %d " % len(goodset))
+                if False:
+                    if not self.n_expected and not badones:
+                        l.append("SOMETHING")
+                        l.append("")
+                        for x in goodset:
+                            if len(l[-1]) + len(x) < 64:
+                                l[-1] += "," + x
+                            else:
+                                l[-1] += "[…]"
+                                break
+                        l[-1] = l[-1][1:]
+                    else:
+                        l.append("MISSING")
+                        l.append(badset.cylinders())
+                    for c in sorted(badones):
+                        l.append(c + ": %d" % len(badones[c]))
             retval = "  ".join(l)
+            self.goodset = goodset
             self.status_cache["summary"] = retval
+        if long:
+            for x in self.goodset:
+                retval += "\n\t" + x
         return retval
 
     def any_good(self):

@@ -7,6 +7,8 @@
 
 import os
 
+import time
+
 from . import media_abc
 from . import kryostream
 from . import chsset
@@ -30,7 +32,7 @@ class Media(media_abc.MediaAbc):
             (True, open("_.trace", "a")),
             (False, open(self.file_name(".trace"), "a")),
         ]
-        print("DEFGEOM", type(self), self.GEOMETRY)
+        # print("DEFGEOM", type(self), self.GEOMETRY)
         if self.GEOMETRY is not None:
             self.define_geometry(*self.GEOMETRY)
 
@@ -61,6 +63,13 @@ class Media(media_abc.MediaAbc):
 
     def cache_file_name(self):
         return self.file_name(".cache")
+
+    def bin_file_name(self):
+        suf = os.path.basename(self.dirname)
+        return self.file_name("." + suf + ".bin")
+
+    def meta_file_name(self):
+        return self.bin_file_name() + ".meta"
 
     def message(self, *args):
         txt = super().message(*args)
@@ -148,31 +157,77 @@ class Media(media_abc.MediaAbc):
                 exit(2)
         self.trace("# cache read", self.cache_file_name())
 
-    def write_result(self):
+    def metadata_media_description(self):
+        yield from []
+
+    def write_result(self, metaproto=""):
         geom = chsset.CHSSet()
-        stretch = {}
+        kit = {}
         for ms in sorted(self.sectors.values()):
-            ch = ms.chs[:2]
-            if ch not in stretch:
-                stretch[ch] = []
-            stretch[ch].append(ms)
-            if ms.has_flag("defined"):
+            maj = ms.find_majority()
+            if maj:
+                geom.add(ms.chs, len(maj))
+                kit[ms.chs] = maj
+            elif ms.has_flag("unused"):
+                kit[ms.chs] = b'\x00' * ms.sector_length
+                geom.add(ms.chs, ms.sector_length)
+            elif ms.has_flag("defined"):
                 geom.add(ms.chs, ms.sector_length)
             else:
-                maj = ms.find_majority()
-                if maj:
-                    geom.add(ms.chs, len(maj))
-                else:
-                    geom.add(ms.chs, 0)
-        print("Geom", self.name)
-        #for i in geom.seq():
-            # print("G", i)
-        for s, v in stretch.items():
-            slo = min(x.chs[2] for x in v)
-            shi = max(x.chs[2] for x in v)
-            #print("S", s, slo, shi, len(v))
-        return
-        fn = self.file_name(".bin")
-        with open(fn, "wb") as file:
-           file.write(b'boo')
-        return "BIN", fn
+                # ???
+                geom.add(ms.chs, 0)
+
+        badsects = chsset.CHSSet()
+        with open(self.bin_file_name(), "wb") as binfile:
+
+            for pr in geom.cuboids():
+                assert len(pr.b) == 1
+                sector_length = list(pr.b)[0]
+                for c,h,s,b in pr:
+                    t = kit.get((c,h,s))
+                    if t is None:
+                        badsects.add((c,h,s), payload=sector_length)
+                        fill = (b'_UNREAD_' * (sector_length // 8 + 1))[:sector_length]
+                        binfile.write(fill)
+                    else:
+                        binfile.write(t)
+
+        with open(self.meta_file_name(), "w") as metafile:
+            metafile.write("BitStore.Metadata_version:\n")
+            metafile.write("\t1.0\n")
+
+            metafile.write("\nBitStore.Access:\n")
+            metafile.write("\tpublic\n")
+  
+            metafile.write("\nBitStore.Filename:\n")
+            metafile.write("\t" + self.dirname + ".BIN\n")
+
+            metafile.write("\nBitStore.Format:\n")
+            metafile.write("\tBINARY\n")
+
+            metafile.write("\nMedia.Geometry:\n")
+            for pr in geom.cuboids():
+                for fmt in pr.metadata_format():
+                    metafile.write("\t" + fmt + "\n")
+
+            metafile.write("\nMedia.Summary:\n")
+            metafile.write("\t" + self.dirname + "\n")
+
+            if metaproto:
+                metafile.write(metaproto)
+
+            if "Media.Description:" not in metaproto:
+                metafile.write("\nMedia.Description:\n")
+
+            metafile.write("\tFloppyTools format: " + self.name + "\n")
+
+            for i in self.metadata_media_description():
+                metafile.write("\t" + i + "\n")
+
+            if badsects:
+                metafile.write("\t\n\tBad (unread) sectors:\n")
+                for cl in badsects.cluster():
+                    for fmt in cl.metadata_format():
+                        metafile.write("\t\t" + fmt + "\n")
+
+            metafile.write("\n*END*\n")

@@ -44,6 +44,7 @@ class KryoStream(fluxstream.FluxStream):
         self.result_code = None
         self.sck = None
         self.ick = None
+        self.kfattrs = []
 
 
     def __str__(self):
@@ -73,7 +74,7 @@ class KryoStream(fluxstream.FluxStream):
     def handle_oob(self, _strm, oob):
         if oob[1] == 2:
             i = struct.unpack("<BBHLLL", oob)
-            self.index.append(i)
+            self.index.append(list(i))
         elif oob[1] == 3:
             i = struct.unpack("<BBHLL", oob)
             self.stream_end = i[3]
@@ -82,7 +83,9 @@ class KryoStream(fluxstream.FluxStream):
             txt = oob[4:-1].decode("utf-8")
             for fld in txt.split(", "):
                 i = fld.split('=', 1)
-                setattr(self, "kfinfo_" + i[0], i[1])
+                an = "kfinfo_" + i[0]
+                setattr(self, an, i[1])
+                self.kfattrs.append(an)
 
     def deframe(self):
         samp = 0

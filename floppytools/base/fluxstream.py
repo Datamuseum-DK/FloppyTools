@@ -166,7 +166,6 @@ class FluxStream():
         off = 0
         if pattern is None:
             pattern = '--' * gaplen + "##"
-        minlen *= 16 + len(pattern)
         while True:
             nxt = fm.find(pattern, off)
             if nxt < 0 or len(fm) - nxt < minlen:
