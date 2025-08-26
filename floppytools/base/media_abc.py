@@ -310,7 +310,7 @@ class MediaAbc():
                 continue
             if j not in why:
                 why[j] = CHSSet()
-            why[j].add(ms.chs)
+            why[j].add(ms.phys_chs)
         for i, j in sorted(why.items()):
             for x in j:
                 yield i, x
@@ -329,7 +329,7 @@ class MediaAbc():
                 defd = ms.has_flag("defined")
                 if i and defd:
                     ngood += 1
-                    goodset.add(ms.chs)
+                    goodset.add(ms.phys_chs)
                 elif i:
                     nextra += 1
                     goodset.add(ms.phys_chs, payload=ms.sector_length)
