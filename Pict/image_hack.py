@@ -25,7 +25,7 @@ class Histogram2():
             self.data[prev][item] += 1
 
     def paint(self, pic, peaks):
-        peak = 0
+        peak = .1
         for i in self.data:
             j = max(i)
             peak = max(peak, j)
@@ -83,7 +83,7 @@ class Histogram():
             for x in range(xlo, xhi+1):
                 vol += left[x]
                 left[x] = 0
-            if vol / tot > .01: 
+            if tot > 0 and vol / tot > .01: 
                 pks.append((xlo, xc, xhi, vol))
             print("pk", xlo * smear, xc * smear, xhi * smear, vol)
 
@@ -98,7 +98,7 @@ class Histogram():
         return ll
 
     def paint(self, pic, peaks):
-        peak = max(self.data)
+        peak = max(.1, max(self.data))
 
         for i, j in enumerate(self.data):
             x = 2 * (i - SLOW // 2)
@@ -224,7 +224,7 @@ class KryoFile():
     def find_first_rotation(self, histo, histo2):
         self.ks.deframe()
 
-        if len(self.ks.index) < 3:
+        if len(self.ks.index) < 2:
             print("Too few index pulses",len(self.ks.index))
             self.rev0 = -1
             self.rev1 = -1
@@ -367,100 +367,3 @@ if __name__ == "__main__":
    import sys
 
    d = DiskImg(sys.argv[1])
-   exit(0)
-
-   if False:
-       import glob
-
-       for dn in glob.glob("/critter/DDHF/2024/NThun/NThun_0007/*"):
-           print("DDD", dn)
-           d = DiskImg(dn)
-           break
-
-       exit(0)
-
-   #import sys
-   #d = DiskImg(sys.argv[1])
-
-   d = DiskImg("/critter/202501_floppy/forth/000")
-   #d = DiskImg("/critter/DDHF/2025/20250102/Q1/Bad/50001592/000")
-   #d = DiskImg("/critter/DDHF/2025/20250102/Q1/Bad/50001608/000")
-   #d = DiskImg("/critter/DDHF/2025/20250102/IntelFD/50001661/000")
-   #d = DiskImg("/critter/DDHF/2024/NThun/NThun_0007/11/")
-   #d = DiskImg("/critter/FloppyTools_Test/ibm_s34_4/01/")
- 
-   #d = DiskImg("/critter/FloppyTools_Test/hp9885_zeiss/00/")
-
-   # High density
-   #d = DiskImg("/critter/FloppyTools_Test/intel_isis_crfd0031/00/")
-
-   # HS
-   #d = DiskImg("/critter/FloppyTools_Test/wang_wcs_cr80fd_0517/00/")
-   #d = DiskImg("/critter/FloppyTools_Test/zilog_mcz_nthun_0034/000")
-
-   # a lot of rotational jitter, 26 sectors
-   #d = DiskImg("/critter/FloppyTools_Test/ibm_cb110/00/")
-
-   #d = DiskImg("/critter/DDHF/2024/20240404_s34fd/S34_8/01")
-
-   # bad track ?
-   #d = DiskImg("/critter/DDHF/2024/20240404_s34fd/S34_7/01")
-
-   # Nearly ideal plain floppy, 8 sectors
-   #d = DiskImg("/critter/DDHF/2024/20240404_s34fd/S34_6/01")
-
-   # Good 26x128 image
-   #d = DiskImg("/critter/DDHF/2024/20240404_s34fd/foo1/00")
-
-   # Good 26x128 image, ditto with waves
-   #d = DiskImg("/critter/DDHF/2024/20240404_s34fd/foo2/00")
-
-   # Good 26x128 image, has index mark
-   #d = DiskImg("/critter/DDHF/2024/20240404_s34fd/foo3/00")
-
-   # also good, unused inner tracks
-   #d = DiskImg("/critter/DDHF/2024/20240404_s34fd/foo4/00")
-
-   # skrevet/formatteret på to forskellige drev
-   #d = DiskImg("/critter/DDHF/2024/20240404_s34fd/foo5/00")
-
-   # ikke ret meget tilbage
-   #d = DiskImg("/critter/DDHF/2025/20250102/Q1/Eliminated/50001614/003")
-
-   # normal 26s
-   #d = DiskImg("/critter/DDHF/2024/crfd_0543/crfd_0543/00")
-
-   #d = DiskImg("/critter/DDHF/2024/20240905/crfd_0531/00")
-
-   # needs work
-   #d = DiskImg("/critter/DDHF/2019/20190919_CBM900_STREAM/Vol_1_high_resolution/")
-   #d = DiskImg("/critter/DDHF/BitStored/CBM900_Floppy_Vol2/data/Vol_2_low_resolution/", 50, 100)
-
-   # grafisk flot
-   #d = DiskImg("/critter/DDHF/2023/20230716_PHK/crfd0034")
-
-
-
-
-   #d = DiskImg("/critter/FloppyTools_Test/dg_nova_nthun_0006/00")
-
-   #d = DiskImg("/critter/FloppyTools_Test/dec_rx02_cb112/00")
-   #d = DiskImg("/critter/DDHF/2024/20240208_CB/cb106/00")
-   #d = DiskImg("/critter/DDHF/2024/S34fd/S34_3/s34_iii_1", low=60,high=80)
-
-   # 4-record sectors
-   #d = DiskImg("/critter/DDHF/2024/S34fd/S34_9/s34_ix_1", low=60,high=80)
-
-   #d = DiskImg("/critter/DDHF/2024/S34fd/S34_4/02", low=60,high=80)
-
-   #d = DiskImg("/critter/DDHF/2025/20250220_DisplayWriter/KP/001")
-   #d = DiskImg("/critter/DDHF/2025/20250213_displaywriter_fd/kresten_petersen/000")
-   #d = DiskImg("/critter/DDHF/2024/S34fd/NA/cr80fd_0527/00")
-   #d = DiskImg("/critter/DDHF/2024/20240815/SuperMaxFD/cr80fd_0545/00", 60, 80)
-   #d = DiskImg("/critter/DDHF/2023/20231026_SG002/SG002/sg002g")
-
-
-
-
-
-     
