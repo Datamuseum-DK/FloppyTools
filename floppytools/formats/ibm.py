@@ -157,7 +157,7 @@ class Ibm(media.Media):
     GAP1 = 16
     MAX_GAP2 = 100
 
-    CLOCKS = [50, 80]
+    CLOCKS = [50, 80, 100]	# 500, 300 and 250 kHz
 
     FMTRACK = IbmFmTrack()
     MFMTRACK = IbmMfmTrack()
