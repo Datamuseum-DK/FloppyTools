@@ -87,6 +87,7 @@ class Media(media_abc.MediaAbc):
     def did_read_sector(self, source, rel_pos, am_chs, octets, flags=()):
         rs = media_abc.ReadSector(source, rel_pos, am_chs, octets, flags)
         self.add_read_sector(rs)
+        return rs
 
     def add_read_sector(self, read_sector):
         ''' Add a reading of a sector '''
@@ -140,17 +141,18 @@ class Media(media_abc.MediaAbc):
         kit = {}
         for ms in sorted(self.sectors.values()):
             maj = ms.find_majority()
+            chs = ms.phys_chs
             if maj:
-                geom.add(ms.chs, len(maj))
-                kit[ms.chs] = maj
+                geom.add(chs, len(maj))
+                kit[chs] = maj
             elif ms.has_flag("unused"):
-                kit[ms.chs] = b'\x00' * ms.sector_length
-                geom.add(ms.chs, ms.sector_length)
+                kit[chs] = b'\x00' * ms.sector_length
+                geom.add(chs, ms.sector_length)
             elif ms.has_flag("defined"):
-                geom.add(ms.chs, ms.sector_length)
+                geom.add(chs, ms.sector_length)
             else:
                 # ???
-                geom.add(ms.chs, 0)
+                geom.add(chs, 0)
 
         badsects = chsset.CHSSet()
         with open(self.bin_file_name(), "wb") as binfile:
@@ -185,8 +187,9 @@ class Media(media_abc.MediaAbc):
                 for fmt in pr.metadata_format():
                     metafile.write("\t" + fmt + "\n")
 
-            metafile.write("\nMedia.Summary:\n")
-            metafile.write("\t" + self.dirname + "\n")
+            if "Media.Summary:" not in metaproto:
+                metafile.write("\nMedia.Summary:\n")
+                metafile.write("\t" + self.dirname + "\n")
 
             if metaproto:
                 metafile.write(metaproto)

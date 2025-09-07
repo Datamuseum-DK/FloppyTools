@@ -32,7 +32,7 @@ class ReadSector():
             self.flags.add("bad")
 
     def __str__(self):
-        return str(("ReadSector", self.chs, self.good, len(self.octets)))
+        return str(("ReadSector", self.phys_chs, self.am_chs, self.good, len(self.octets)))
 
     def __eq__(self, other):
         return self.octets == other.octets and self.good == other.good
@@ -45,10 +45,12 @@ class MediaSector():
     ''' What we know about a sector on the media '''
 
     def __init__(self, am_chs, phys_chs, sector_length=None):
-        assert len(am_chs) == 3
+        assert am_chs is None or len(am_chs) == 3
         assert len(phys_chs) == 3
         self.am_chs = am_chs
-        self.phys_chs = (phys_chs[0], phys_chs[1], am_chs[2])
+        if am_chs is not None:
+            phys_chs = (phys_chs[0], phys_chs[1], am_chs[2])
+        self.phys_chs = phys_chs
         self.readings = []
         self.values = {}
         self.sector_length = sector_length
@@ -71,6 +73,8 @@ class MediaSector():
     def add_read_sector(self, read_sector):
         ''' Add a reading of this sector '''
 
+        if self.am_chs is None:
+            self.am_chs = read_sector.am_chs
         assert read_sector.am_chs == self.am_chs
         assert read_sector.phys_chs == self.phys_chs
         self.readings.append(read_sector)
@@ -158,6 +162,7 @@ class MediaAbc():
         self.n_expected = 0
         self.status_cache = {}
         self.goodset = set()
+        self.weird_ams = 0
 
     def __str__(self):
         return "{MEDIA " + self.__class__.__name__ + " " + self.name + "}"
@@ -183,8 +188,11 @@ class MediaAbc():
     def add_read_sector(self, rs):
         assert len(rs.am_chs) == 3
         assert len(rs.phys_chs) == 3
+        if rs.am_chs != rs.phys_chs:
+            self.weird_ams += 1
         if rs.phys_chs not in self.sectors:
             self.sectors[rs.phys_chs] = MediaSector(rs.am_chs, rs.phys_chs)
+        self.trace("AMS", rs.phys_chs, rs.am_chs, self.sectors[rs.phys_chs])
         self.sectors[rs.phys_chs].add_read_sector(rs)
         self.cyl_no.add(rs.phys_chs[0])
         self.hd_no.add(rs.phys_chs[1])
@@ -195,7 +203,7 @@ class MediaAbc():
     def define_sector(self, chs, sector_length=None):
         ms = self.sectors.get(chs)
         if ms is None:
-            ms = MediaSector(chs, chs, sector_length)
+            ms = MediaSector(None, chs, sector_length)
             self.sectors[chs] = ms
         if not ms.has_flag("defined"):
             ms.sector_length = sector_length
@@ -362,6 +370,8 @@ class MediaAbc():
                         l.append(badset.cylinders())
                     for c in sorted(badones):
                         l.append(c + ": %d" % len(badones[c]))
+            if self.weird_ams:
+                 l.append("AM!%d" % self.weird_ams)
             retval = "  ".join(l)
             self.goodset = goodset
             self.status_cache["summary"] = retval
