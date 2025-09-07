@@ -13,6 +13,7 @@ MARGIN = 40
 WIDTH = 2 * int(SCALE * (RAD76 + TPI * 76) + MARGIN)
 
 SLOW = 200
+SLOW_OFF = 25
 
 class Histogram2():
     def __init__(self):
@@ -21,7 +22,9 @@ class Histogram2():
             self.data.append([0] * SLOW)
 
     def add(self, prev, item):
-        if 5 < prev < SLOW and 5 < item < SLOW:
+        prev -= SLOW_OFF 
+        item -= SLOW_OFF 
+        if 0 <= prev < SLOW and 0 <= item < SLOW:
             self.data[prev][item] += 1
 
     def paint(self, pic, peaks):
@@ -54,7 +57,8 @@ class Histogram():
         self.data = [0] * SLOW
 
     def add(self, item):
-        if 5 <= item < SLOW:
+        item -= SLOW_OFF 
+        if 0 <= item < SLOW:
             self.data[item] += 1
 
     def peaks(self):
@@ -103,7 +107,7 @@ class Histogram():
         for i, j in enumerate(self.data):
             x = 2 * (i - SLOW // 2)
             y0 = SLOW 
-            yx = y0 + -10 * int(math.log(1 + 1000 * j / peak))
+            yx = y0 + +10 * int(math.log(1 + 1000 * j / peak))
             if peaks[0] <= i <= peaks[1]:
                 rgb = (64, 255, 64)
             elif peaks[2] <= i <= peaks[3]:
@@ -112,7 +116,8 @@ class Histogram():
                 rgb = (255, 0, 0)
             else:
                 rgb = (192, 192, 192)
-            for y in range(yx, y0 + 1): 
+            #for y in range(yx, y0 + 1): 
+            for y in range(y0 - 1, yx): 
                 pic.color(x, y, rgb)
                 pic.color(x+1, y, rgb)
 
@@ -135,6 +140,7 @@ class Pixel():
         b = 0
         if True:
             for k in self.data:
+                k -= SLOW_OFF
                 if peaks[0] <= k <= peaks[1]:
                     g += 1
                 elif peaks[2] <= k <= peaks[3]:
@@ -326,15 +332,11 @@ class KryoFile():
 class DiskImg():
 
 
-    def __init__(self, dirname):
+    def __init__(self, dirname, side=0):
 
         self.dirname = dirname
 
-        self.fns = list(sorted(glob.glob(dirname + "/*??.0.raw")))
-
-        if 0 and len(self.fns) < 30:
-            print("Too few tracks", len(self.fns))
-            return
+        self.fns = list(sorted(glob.glob(dirname + "/*??.%d.raw" % side)))
 
         kfs = list(KryoFile(fn) for fn in self.fns)
 
@@ -344,9 +346,7 @@ class DiskImg():
         h2 = Histogram2()
 
         for kf in kfs[:200]:
-            print(kf)
-            if kf.chs[1] != 0:
-                continue
+            print("kf", kf)
             kf.find_first_rotation(h, h2)
 
         peaks = h.peaks()
@@ -355,8 +355,6 @@ class DiskImg():
         h.dump("/tmp/_h")
 
         for kf in kfs[:200]:
-            if kf.chs[1] != 0:
-                continue
             kf.process(p)
 
         p.dump("/tmp/pix.ppm", peaks)
@@ -366,4 +364,4 @@ if __name__ == "__main__":
 
    import sys
 
-   d = DiskImg(sys.argv[1])
+   d = DiskImg(sys.argv[1], len(sys.argv) - 2)
