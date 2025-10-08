@@ -20,6 +20,9 @@ class Media(media_abc.MediaAbc):
     # ((first_c, first_h, first_s), (last_c, last_h, last_s), sector_size)
     GEOMETRY = None
 
+    META_SUFFIX = ".BIN"
+    META_FORMAT = "BINARY"
+
     # Other names or groups this format belongs to.
     aliases = [ ]
 
@@ -168,6 +171,9 @@ class Media(media_abc.MediaAbc):
                         binfile.write(fill)
                     else:
                         binfile.write(t)
+        self.write_result_meta(metaproto, geom, badsects)
+
+    def write_result_meta(self, metaproto="", geom=None, badsects=None):
 
         with open(self.meta_file_name(), "w") as metafile:
             metafile.write("BitStore.Metadata_version:\n")
@@ -177,15 +183,24 @@ class Media(media_abc.MediaAbc):
             metafile.write("\tpublic\n")
   
             metafile.write("\nBitStore.Filename:\n")
-            metafile.write("\t" + self.dirname + ".BIN\n")
+            metafile.write("\t" + self.dirname + self.META_SUFFIX + "\n")
 
             metafile.write("\nBitStore.Format:\n")
-            metafile.write("\tBINARY\n")
+            metafile.write("\t" + self.META_FORMAT + "\n")
 
-            metafile.write("\nMedia.Geometry:\n")
-            for pr in geom.cuboids():
-                for fmt in pr.metadata_format():
-                    metafile.write("\t" + fmt + "\n")
+            try:
+                qr = int(self.dirname)
+                if 50000000 <= qr <= 50999999:
+                    metafile.write("\nDDHF.QR:\n\t%d\n" % qr)
+            except Exception as err:
+                print("QR", err, self.dirname)
+                pass
+
+            if geom:
+                metafile.write("\nMedia.Geometry:\n")
+                for pr in geom.cuboids():
+                    for fmt in pr.metadata_format():
+                        metafile.write("\t" + fmt + "\n")
 
             if "Media.Summary:" not in metaproto:
                 metafile.write("\nMedia.Summary:\n")
@@ -196,6 +211,8 @@ class Media(media_abc.MediaAbc):
 
             if "Media.Description:" not in metaproto:
                 metafile.write("\nMedia.Description:\n")
+                for ln in self.label_text():
+                    metafile.write("\t" + ln + "\n")
 
             metafile.write("\tFloppyTools format: " + self.name + "\n")
 
@@ -209,3 +226,27 @@ class Media(media_abc.MediaAbc):
                         metafile.write("\t\t" + fmt + "\n")
 
             metafile.write("\n*END*\n")
+
+    def label_text(self):
+        try:
+            file = open("labels.txt")
+        except FileNotFound:
+            return []
+        l = None
+        for ln in file:
+            ln = ln.rstrip()
+            if ln == self.dirname:
+                l = ["Label:"]
+                continue
+            if l is None:
+                continue
+            if ln[0] != '\t':
+                return l
+            l.append(ln)
+        if l:
+            return l
+        print("#", self.dirname, "NB: Nothing in labels.txt")
+        return []
+        
+                
+        

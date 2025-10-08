@@ -32,7 +32,7 @@ class ReadSector():
             self.flags.add("bad")
 
     def __str__(self):
-        return str(("ReadSector", self.phys_chs, self.am_chs, self.good, len(self.octets)))
+        return str(("ReadSector", self.phys_chs, self.am_chs, self.good, len(self.octets), self.flags))
 
     def __eq__(self, other):
         return self.octets == other.octets and self.good == other.good
@@ -88,6 +88,7 @@ class MediaSector():
             self.sector_length = len(read_sector.octets)
         else:
             self.sector_length = None
+        self.flags |= read_sector.flags
         self.status_cache = {}
 
     def find_majority(self):

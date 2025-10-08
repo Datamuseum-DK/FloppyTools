@@ -5,10 +5,14 @@
    ~~~~~~~~~~
 '''
 
+import os
+import time
 import crcmod
 
 from ..base import media
 from ..base import fluxstream as fs
+
+from ..base import chsset
 
 crc_func = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 
@@ -162,6 +166,9 @@ class Ibm(media.Media):
     FMTRACK = IbmFmTrack()
     MFMTRACK = IbmMfmTrack()
 
+    META_SUFFIX = ".IMD"
+    META_FORMAT = "IMAGEDISK"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.todo = []
@@ -188,6 +195,104 @@ class Ibm(media.Media):
                 return retval
             self.todo.append(self.todo.pop(0))
         return False
+
+    def bin_file_name(self):
+        suf = os.path.basename(self.dirname)
+        return self.file_name("." + suf + ".imd")
+
+    def imd_mode_byte(self, flags):
+        if 'clock=50' in flags:
+            retval = 0x00
+        elif 'clock=80' in flags:
+            retval = 0x01
+        elif 'clock=100' in flags:
+            retval = 0x02
+        else:
+            assert False
+        if 'mode=FM' in flags:
+            return retval
+        if 'mode=MFM' in flags:
+            return retval + 3
+        assert False
+
+    def write_result(self, metaproto=""):
+
+        tracks = {}
+        for ms in sorted(self.sectors.values()):
+            maj = ms.find_majority()
+            if not maj:
+                continue
+            chs = ms.phys_chs
+            trk = tracks.get(chs[:2])
+            if trk is None:
+                trk = []
+                tracks[chs[:2]] = trk
+            trk.append((ms.phys_chs, ms.flags, maj))
+
+        with open(self.bin_file_name(), "wb") as binfile:
+            gm = time.gmtime(time.time())
+            hdr = time.strftime('IMD 1.19: %d/%m/%Y %H:%M:%S\r\n', gm)
+            binfile.write(hdr.encode('ascii'))
+            binfile.write(b'Create by Datamuseum-DK/FloppyTools\r\n')
+            binfile.write(b'\x1a')
+            for chs, trk in sorted(tracks.items()):
+                th = (
+                    self.imd_mode_byte(trk[0][1]),
+                    chs[0],
+                    chs[1],
+                    len(trk),
+                    {
+                        128: 0,
+                        256: 1,
+                        512: 2,
+                        1024: 3,
+                        2048: 4,
+                        4096: 5,
+                        8192: 6,
+                    }[len(trk[0][2])],
+                )
+                binfile.write(bytes(th))
+                snm = bytes(x[0][2] for x in trk)
+                binfile.write(snm)
+                for chs, flg, dat in trk:
+                    if "deleted" in flg:
+                        binfile.write(b'\x03')
+                    else:
+                        binfile.write(b'\x01')
+                    binfile.write(dat)
+
+        self.write_result_meta(metaproto)
+        return
+
+        with open(self.meta_file_name(), "w") as metafile:
+            metafile.write("BitStore.Metadata_version:\n")
+            metafile.write("\t1.0\n")
+
+            metafile.write("\nBitStore.Access:\n")
+            metafile.write("\tpublic\n")
+  
+            metafile.write("\nBitStore.Filename:\n")
+            metafile.write("\t" + self.dirname + ".IMD\n")
+
+            metafile.write("\nBitStore.Format:\n")
+            metafile.write("\tIMAGEDISK\n")
+
+            if "Media.Summary:" not in metaproto:
+                metafile.write("\nMedia.Summary:\n")
+                metafile.write("\t" + self.dirname + "\n")
+
+            if metaproto:
+                metafile.write(metaproto)
+
+            if "Media.Description:" not in metaproto:
+                metafile.write("\nMedia.Description:\n")
+
+            metafile.write("\tFloppyTools format: " + self.name + "\n")
+
+            for i in self.metadata_media_description():
+                metafile.write("\t" + i + "\n")
+
+            metafile.write("\n*END*\n")
 
 """
 class IbmFm128Ss(IbmFm):
