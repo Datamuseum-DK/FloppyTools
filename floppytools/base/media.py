@@ -193,7 +193,7 @@ class Media(media_abc.MediaAbc):
                 if 50000000 <= qr <= 50999999:
                     metafile.write("\nDDHF.QR:\n\t%d\n" % qr)
             except Exception as err:
-                print("QR", err, self.dirname)
+                print("Note: QR", err, self.dirname)
                 pass
 
             if geom:
@@ -230,7 +230,7 @@ class Media(media_abc.MediaAbc):
     def label_text(self):
         try:
             file = open("labels.txt")
-        except FileNotFound:
+        except FileNotFoundError:
             return []
         l = None
         for ln in file:

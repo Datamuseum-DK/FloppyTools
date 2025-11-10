@@ -36,7 +36,7 @@ Formats currently supported:
 
 * Intel ISIS-II (intel_isis.py, M²FM encoding)
 
-* Ohio Scientific 
+* Ohio Scientific OS65U
 
 * Q1 MicroLite (q1_microlite.py, per-track non 2^N sector lengths)
 
