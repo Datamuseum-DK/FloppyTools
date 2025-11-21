@@ -26,6 +26,8 @@ packages, where they will run faster.
 
 Formats currently supported:
 
+* Apple ][ DOS 3.3 (GCR coding, non-use of index pulse, WOZ-code)
+
 * Commodore 64/1541/4040 (GCR coding, non-use of index pulse)
 
 * DEC RX02 (dec_rx02.py, uses special M²FM encoding)
