@@ -3,6 +3,9 @@
 ''' MACHINE GENERATED FILE, see make_index.py'''
 
 documentation = {
+    "AppleII": [
+        ['Apple ][ floppy disks'],
+    ],
     "CBM64": [
         ['Commodore 4040/1541 floppy disks'],
     ],
@@ -53,7 +56,10 @@ aliases = {
 }
 
 def find_formats(target):
-    if target == "CBM64":
+    if target == "AppleII":
+        from . import apple
+        yield ("AppleII", apple.ALL[0])
+    elif target == "CBM64":
         from . import cbm64
         yield ("CBM64", cbm64.ALL[0])
     elif target == "DataGeneralNova":
@@ -98,6 +104,8 @@ def find_formats(target):
         from . import zilog_mcz
         yield ("ZilogMCZ", zilog_mcz.ALL[0])
     elif target == "all":
+        from . import apple
+        yield ("AppleII", apple.ALL[0])
         from . import cbm64
         yield ("CBM64", cbm64.ALL[0])
         from . import dec_rx02
