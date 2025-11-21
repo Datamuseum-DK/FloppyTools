@@ -3,6 +3,9 @@
 ''' MACHINE GENERATED FILE, see make_index.py'''
 
 documentation = {
+    "CBM64": [
+        ['Commodore 4040/1541 floppy disks'],
+    ],
     "DataGeneralNova": [
         ['Data General Nova 8" floppy disks'],
     ],
@@ -18,8 +21,8 @@ documentation = {
     "IntelIsis": [
         ['Intel ISIS format 8" floppy disks'],
     ],
-    "OhioScientific": [
-        ['Ohio Scientific'],
+    "OhioScientificU": [
+        ['Ohio Scientific OS65U format'],
     ],
     "Q1MicroLiteFM": [
         ['Q1 Corporation MicroLite FM format floppy disks\n\n\tBla\n\n\tFOo'],
@@ -50,7 +53,10 @@ aliases = {
 }
 
 def find_formats(target):
-    if target == "DataGeneralNova":
+    if target == "CBM64":
+        from . import cbm64
+        yield ("CBM64", cbm64.ALL[0])
+    elif target == "DataGeneralNova":
         from . import dg_nova
         yield ("DataGeneralNova", dg_nova.ALL[0])
     elif target == "DecRx02":
@@ -68,9 +74,9 @@ def find_formats(target):
     elif target == "IntelIsis":
         from . import intel_isis
         yield ("IntelIsis", intel_isis.ALL[0])
-    elif target == "OhioScientific":
+    elif target == "OhioScientificU":
         from . import ohio_scientific
-        yield ("OhioScientific", ohio_scientific.ALL[0])
+        yield ("OhioScientificU", ohio_scientific.ALL[0])
     elif target == "Q1":
         from . import q1_microlite
         yield ("Q1MicroLiteMFM28", q1_microlite.ALL[0])
@@ -92,6 +98,8 @@ def find_formats(target):
         from . import zilog_mcz
         yield ("ZilogMCZ", zilog_mcz.ALL[0])
     elif target == "all":
+        from . import cbm64
+        yield ("CBM64", cbm64.ALL[0])
         from . import dec_rx02
         yield ("DecRx02", dec_rx02.ALL[0])
         from . import dg_nova
@@ -103,7 +111,7 @@ def find_formats(target):
         from . import intel_isis
         yield ("IntelIsis", intel_isis.ALL[0])
         from . import ohio_scientific
-        yield ("OhioScientific", ohio_scientific.ALL[0])
+        yield ("OhioScientificU", ohio_scientific.ALL[0])
         from . import q1_microlite
         yield ("Q1MicroLiteMFM28", q1_microlite.ALL[0])
         yield ("Q1MicroLiteMFM39", q1_microlite.ALL[1])
