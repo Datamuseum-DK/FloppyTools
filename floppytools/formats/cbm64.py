@@ -173,7 +173,7 @@ class CBM64(media.Media):
                     stream,
                     amx,
                     am_chs,
-                    r[2:],
+                    r[1:257],
                     (am[4:6].hex()),
                 )
                 retval = True
