@@ -1,3 +1,7 @@
+# FloppyTools have moved
+
+Find us here now: https://codeberg.org/Datamuseum-dk/FloppyTools
+
 # FloppyTools
 
 Some python tools we use for preservation of rare floppy disks in
